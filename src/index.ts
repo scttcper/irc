@@ -1,1 +1,1 @@
-export * from './irc';
+export { IrcClient, ChannelData, IrcOptions } from './irc';
