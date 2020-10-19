@@ -1,6 +1,17 @@
-import ircColors from 'irc-colors';
+import ircColors from './ircColors';
+import { CODES, CodeNames, CommandTypes } from './codes';
 
-import { CODES } from './codes';
+export type Message = {
+  args: string[];
+  prefix: string;
+  nick?: string;
+  user?: string;
+  host?: string;
+  server?: string;
+  command: CodeNames;
+  rawCommand: string;
+  commandType: CommandTypes | 'normal';
+};
 
 /**
  * parseMessage(line, stripColors)
@@ -10,20 +21,14 @@ import { CODES } from './codes';
  * @param line Raw message from IRC server.
  * @param stripColors If true, strip IRC colors.
  * @param enableStrictParse If true, will try to conform to RFC2812 strictly for parsing usernames (and disallow eg CJK characters).
- * @return {Object} A parsed message object.
+ * @return A parsed message object.
  */
-export function parseMessage(line: string, stripColors: boolean, enableStrictParse?: boolean) {
-  var message: {
-    prefix?: string;
-    nick?: string;
-    user?: string;
-    host?: string;
-    server?: string;
-    command?: string;
-    rawCommand?: string;
-    commandType?: string;
-    args: any[];
-  } = {
+export function parseMessage(
+  line: string,
+  stripColors?: boolean,
+  enableStrictParse?: boolean,
+): Message {
+  const message: Partial<Message> = {
     args: [],
   };
 
@@ -62,12 +67,15 @@ export function parseMessage(line: string, stripColors: boolean, enableStrictPar
 
   const codeData = CODES[message.rawCommand];
   if (codeData) {
-    if ('name' in codeData) message.command = codeData.name;
+    if ('name' in codeData) {
+      message.command = codeData.name;
+    }
+
     message.commandType = codeData.type;
   }
 
-  var middle: string | undefined = line;
-  var trailing: string | undefined;
+  let middle: string | undefined = line;
+  let trailing: string | undefined;
   // Parse parameters
   if (line.search(/^:|\s+:/) !== -1) {
     match = /(.*?)(?:^:|\s+:)(.*)/.exec(line);
@@ -79,9 +87,9 @@ export function parseMessage(line: string, stripColors: boolean, enableStrictPar
     message.args = middle.split(/ +/);
   }
 
-  if (typeof trailing !== 'undefined' && trailing.length) {
+  if (trailing?.length) {
     message.args.push(trailing);
   }
 
-  return message;
+  return message as Message;
 }

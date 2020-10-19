@@ -178,3 +178,5 @@ Object.keys(allColors).forEach(type => {
     addGetters(exports[color], [type]);
   });
 });
+
+export = extras;

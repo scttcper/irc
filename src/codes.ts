@@ -570,3 +570,19 @@ export const CODES = {
     type: 'reply',
   },
 } as const;
+
+// TODO: List all codes? Not all seem to be numeric
+export type CodeNames =
+  | {
+      // Map through all the keys of the given base type.
+      [Key in keyof typeof CODES]: typeof CODES[Key] extends { name: string } // Pick only keys with types extending the given `Condition` type.
+        ? // Retain this key since the condition passes.
+          typeof CODES[Key]['name']
+        : // Discard this key since the condition fails.
+          never;
+
+      // Convert the produced object into a union type of the keys which passed the conditional test.
+    }[keyof typeof CODES]
+  | string;
+
+export type CommandTypes = typeof CODES[keyof typeof CODES]['type'];
