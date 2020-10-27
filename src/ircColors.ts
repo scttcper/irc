@@ -179,4 +179,4 @@ Object.keys(allColors).forEach(type => {
   });
 });
 
-export = extras;
+export default extras;
