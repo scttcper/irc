@@ -157,3 +157,61 @@ export const strict = [
     },
   ],
 ];
+
+export const nonStrict = [
+  [
+    ':견본!~examplename@example.host PRIVMSG #channel :test message',
+    {
+      prefix: '견본!~examplename@example.host',
+      nick: '견본',
+      user: '~examplename',
+      host: 'example.host',
+      command: 'PRIVMSG',
+      rawCommand: 'PRIVMSG',
+      commandType: 'normal',
+      args: ['#channel', 'test message'],
+    },
+  ],
+  [
+    ':x/y!~examplename@example.host PRIVMSG #channel :test message',
+    {
+      prefix: 'x/y!~examplename@example.host',
+      nick: 'x/y',
+      user: '~examplename',
+      host: 'example.host',
+      command: 'PRIVMSG',
+      rawCommand: 'PRIVMSG',
+      commandType: 'normal',
+      args: ['#channel', 'test message'],
+    },
+  ],
+  [
+    ':?nick!~examplename@example.host PRIVMSG #channel :test message',
+    {
+      prefix: '?nick!~examplename@example.host',
+      nick: '?nick',
+      user: '~examplename',
+      host: 'example.host',
+      command: 'PRIVMSG',
+      rawCommand: 'PRIVMSG',
+      commandType: 'normal',
+      args: ['#channel', 'test message'],
+    },
+  ],
+];
+
+export const noprefix = [
+  [
+    '477 nodebot #channel :Cannot join channel (+r) - you need to be identified with services',
+    {
+      command: '477',
+      rawCommand: '477',
+      commandType: 'error',
+      args: [
+        'nodebot',
+        '#channel',
+        'Cannot join channel (+r) - you need to be identified with services',
+      ],
+    },
+  ],
+];
