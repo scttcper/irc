@@ -207,7 +207,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       idlength: {} as Record<string, number>,
       length: 200,
       limit: [] as number[],
-      modes: { a: '', b: '', c: '', d: '' },
+      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+      modes: { a: '', b: '', c: '', d: '' } as Record<string, string>,
       types: '',
     },
     kicklength: 0,
@@ -775,7 +776,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
       const param = match[1];
       const value = match[2];
-      const type = ['a', 'b', 'c', 'd'];
+      const type = ['a', 'b', 'c', 'd'] as const;
       // eslint-disable-next-line default-case
       switch (param) {
         case 'CHANLIMIT': {
@@ -930,6 +931,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           } else {
             channel.users[modeArg] = channel.users[modeArg].replace(this.prefixForMode[mode], '');
           }
+        } else {
+          console.log('oh no', modeArg);
         }
 
         this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
@@ -953,6 +956,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       } else if (supported.d.includes(mode)) {
         chanModes(mode);
         this.emit(eventName, message.args[0], message.nick, mode, undefined, message);
+      } else {
+        throw new Error('explode');
       }
     });
   }

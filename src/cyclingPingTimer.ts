@@ -23,7 +23,13 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   loopingTimeout?: ReturnType<typeof setTimeout>;
   pingWaitTimeout?: ReturnType<typeof setTimeout>;
 
-  constructor(private readonly options: IrcOptions) {
+  constructor(
+    private readonly options: Pick<
+      IrcOptions,
+      'millisecondsBeforePingTimeout' | 'millisecondsOfSilenceBeforePingSent'
+    > &
+      Partial<IrcOptions>,
+  ) {
     super();
 
     this.on('wantPing', () => {
@@ -60,7 +66,6 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
     }
 
     this.started = false;
-
     clearTimeout(this.loopingTimeout);
     clearTimeout(this.pingWaitTimeout);
   }

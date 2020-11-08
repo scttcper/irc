@@ -1,23 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
 
-import { IrcClient } from '../src/irc';
-
-/**
- * mocks out what would happen in the connect fn
- */
-function setupMockClient(nick: string) {
-  const client = new IrcClient('', nick);
-  client.connection = {
-    currentBuffer: Buffer.from(''),
-    // @ts-expect-error
-    socket: { write: jest.fn() },
-    // @ts-expect-error
-    cyclingPingTimer: { notifyOfActivity: jest.fn() },
-  };
-  client.nick = nick;
-
-  return client;
-}
+import { setupMockClient } from './helpers';
 
 describe('user events', () => {
   it('emits events per fixtures', () => {
