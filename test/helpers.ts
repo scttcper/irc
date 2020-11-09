@@ -1,10 +1,10 @@
-import { IrcClient } from '../src/irc';
+import { IrcClient, IrcOptions } from '../src/irc';
 
 /**
  * mocks out what would happen in the connect fn
  */
-export function setupMockClient(nick: string) {
-  const client = new IrcClient('', nick);
+export function setupMockClient(nick: string, options?: Partial<IrcOptions>) {
+  const client = new IrcClient('', nick, options);
   client.connection = {
     currentBuffer: Buffer.from(''),
     // @ts-expect-error

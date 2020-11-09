@@ -931,8 +931,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           } else {
             channel.users[modeArg] = channel.users[modeArg].replace(this.prefixForMode[mode], '');
           }
-        } else {
-          console.log('oh no', modeArg);
         }
 
         this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
