@@ -40,6 +40,7 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   }
 
   notifyOfActivity() {
+    this.stop();
     this.start();
   }
 
