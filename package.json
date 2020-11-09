@@ -53,8 +53,11 @@
       "@babel/plugin-transform-modules-commonjs"
     ]
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "release": {
-    "branch": "main"
+    "branches": "main"
   },
   "engines": {
     "node": ">=12"
