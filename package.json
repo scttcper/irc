@@ -54,7 +54,7 @@
     ]
   },
   "release": {
-    "branch": "master"
+    "branch": "main"
   },
   "engines": {
     "node": ">=12"
