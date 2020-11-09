@@ -1,5 +1,5 @@
 {
-  "name": "irc",
+  "name": "@ctrl/irc",
   "version": "0.0.0-placeholder",
   "description": "TypeScript based node irc client",
   "author": "Scott Cooper <scttcper@gmail.com>",
