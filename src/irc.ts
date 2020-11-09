@@ -10,7 +10,6 @@ import { default as defaultsdeep } from 'lodash.defaultsdeep';
 
 import { parseMessage, Message } from './parseMessage';
 import { CyclingPingTimer } from './cyclingPingTimer';
-import { resolve } from 'path';
 
 const log = debug('irc');
 const lineDelimiter = new RegExp(/\r\n|\r|\n/);
