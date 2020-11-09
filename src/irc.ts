@@ -106,7 +106,7 @@ interface IrcClientEvents {
    * Channels are emitted case-lowered.
    */
   nick: (nick: string, arg: string, channels: string[], message: Message) => void;
-  notice: (from: string, to: string, text: string, message: Message) => void;
+  notice: (from: string | undefined, to: string, text: string, message: Message) => void;
   opered: () => void;
   /** Emitted when the socket connection to the server emits an error event. */
   netError: (exception: string) => void;

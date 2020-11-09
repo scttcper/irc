@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, beforeEach, jest } from '@jest/globals';
-import { emit } from 'process';
 
 import { CyclingPingTimer } from '../src/cyclingPingTimer';
 
@@ -22,20 +21,15 @@ describe('CyclingPingTimer', () => {
     jest.resetAllMocks();
   });
 
-  it('is stopped by default', () => {
-    expect(cyclingPingTimer.started).toBeFalsy();
-  });
-
   it('starts', () => {
     cyclingPingTimer.start();
-    expect(cyclingPingTimer.started).toBeTruthy();
+
     expect(cyclingPingTimer.loopingTimeout).toBeTruthy();
   });
 
   it('stops', () => {
     cyclingPingTimer.start();
     cyclingPingTimer.stop();
-    expect(cyclingPingTimer.started).toBeFalsy();
   });
 
   it('does not want ping early', done => {
@@ -69,7 +63,6 @@ describe('CyclingPingTimer', () => {
     });
 
     expect(emitSpy).toHaveBeenCalledTimes(0);
-    expect(cyclingPingTimer.started).toBeTruthy();
   });
 
   it('does want ping if notified of activity', async () => {
@@ -85,6 +78,5 @@ describe('CyclingPingTimer', () => {
     });
 
     expect(emitSpy).toBeCalledWith('wantPing');
-    expect(cyclingPingTimer.started).toBeTruthy();
   });
 });
