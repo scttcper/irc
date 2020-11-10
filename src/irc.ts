@@ -353,17 +353,24 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.connection.cyclingPingTimer.notifyOfActivity();
 
     if (typeof chunk === 'string') {
-      this.connection.currentBuffer = Buffer.from(chunk);
+      this.connection.currentBuffer = Buffer.concat([
+        this.connection.currentBuffer,
+        Buffer.from(chunk),
+      ]);
     } else {
       this.connection.currentBuffer = Buffer.concat([this.connection.currentBuffer, chunk]);
     }
 
-    const lines = this.convertEncoding(chunk).toString().split(lineDelimiter);
+    const lines = this.convertEncoding(this.connection.currentBuffer)
+      .toString()
+      .split(lineDelimiter);
+
     if (lines.pop()) {
       // if buffer doesn't end \r\n, there are more chunks.
       return;
     }
 
+    // Reset buffer
     this.connection.currentBuffer = Buffer.from('');
 
     for (const line of lines.filter(n => n)) {
@@ -416,17 +423,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  convertEncoding(str: string | Buffer) {
-    if (this.opt.encoding) {
-      return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
-        this.debug(err, { str: str, charset: charset });
-      });
-    }
-
-    return str;
-  }
-
-  emitChannelEvent(
+  private emitChannelEvent(
     eventName: 'notice' | 'part' | 'kick' | 'join' | 'names',
     channel: string,
     ...args: string[] | [string] | [Users]
@@ -437,8 +434,18 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.emit(eventName + channel, ...args);
   }
 
-  cancelAutoRenick(): void {
+  private cancelAutoRenick(): void {
     clearInterval(this.connection?.renickInterval);
+  }
+
+  private convertEncoding(str: string | Buffer) {
+    if (this.opt.encoding) {
+      return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
+        this.debug(err, { str: str, charset: charset });
+      });
+    }
+
+    return str;
   }
 
   private _speak(kind: string, target: string, text: string) {
@@ -953,8 +960,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       } else if (supported.d.includes(mode)) {
         chanModes(mode);
         this.emit(eventName, message.args[0], message.nick, mode, undefined, message);
-      } else {
-        throw new Error('explode');
       }
     });
   }
