@@ -63,9 +63,13 @@ export type ChannelData = {
   created?: string;
 };
 
-interface IrcClientEvents {
-  // TODO: use typescript 4.1 to match more types
-  // [key: string]: (...args: any[]) => void;
+type OnMessage = (nick: string, to: string, text: string, message: Message) => void;
+// TODO: figure out how to pass channel names as generic
+type Messages<T = string[]> = {
+  [K in T as `message#${string & K}`]: OnMessage;
+};
+
+type IrcClientEvents<T = string[]> = Messages<T> & {
   raw: (message: Message) => void;
   /** Emitted when a user is kicked from a channel. */
   kick: (channel: string, nick: string) => void;
@@ -127,8 +131,7 @@ interface IrcClientEvents {
    * Emitted when a message is sent.
    * The ``to`` parameter can be either a nick (which is most likely this client's nick and represents a private message), or a channel (which represents a message to that channel).
    */
-  message: (nick: string, to: string, text: string, message: Message) => void;
-  'message#': (nick: string, to: string, text: string, message: Message) => void;
+  message: OnMessage;
   // Emitted when a message is sent from the client.
   selfMessage: (to: string, text: string) => void;
   /** Emitted whenever a user performs an action (e.g. ``/me waves``) */
@@ -180,7 +183,7 @@ interface IrcClientEvents {
   'ctcp-privmsg': (from: string, to: string, text: string, message: Message) => void;
   /** Emitted when a CTCP VERSION request is received. */
   'ctcp-version': (from: string, to: string, message: Message) => void;
-}
+};
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
@@ -333,7 +336,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   join(channel: string) {
-    // @ts-expect-error
     this.once(`join${channel.toLowerCase()}`, () => {
       // Append to opts.channel on successful join, so it rejoins on reconnect.
       const channelIndex = this._findChannelFromStrings(channel);
@@ -1234,13 +1236,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit('message#', from, to, text, message);
-      // @ts-expect-error
-      this.emit('message' + to, from, text, message);
-      if (to !== to.toLowerCase()) {
-        // @ts-expect-error
-        this.emit('message' + to.toLowerCase(), from, text, message);
-      }
+      this.emit('message#' + to.toLowerCase(), from, to, text, message);
     }
 
     if (to.toUpperCase() === this.nick.toUpperCase()) {
