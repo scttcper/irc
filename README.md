@@ -2,7 +2,7 @@
 
 > A typed IRC client library for node
 
-Based on [irc-upd](https://github.com/Throne3d/node-irc) which is a fork of [node-irc](https://github.com/martynsmith/node-irc). Also includes irc color decoding based on [irc-colors.js](https://github.com/fent/irc-colors.js)
+Based on [irc-upd](https://github.com/Throne3d/node-irc). Includes irc color decoding based on [irc-colors.js](https://github.com/fent/irc-colors.js)
 
 ### Install
 
