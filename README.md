@@ -4,6 +4,12 @@
 
 Based on [irc-upd](https://github.com/Throne3d/node-irc) which is a fork of [node-irc](https://github.com/martynsmith/node-irc). Also includes irc color decoding based on [irc-colors.js](https://github.com/fent/irc-colors.js)
 
+### Install
+
+```console
+npm install @ctrl/irc
+```
+
 ### Use
 
 ```ts
