@@ -4,9 +4,9 @@ import { connect as NetConnect } from 'net';
 
 import { TypedEmitter } from 'tiny-typed-emitter';
 import debug from 'debug';
-import iconv from 'iconv-lite';
+import * as iconv from 'iconv-lite';
 import charsetDetector from 'chardet';
-import { default as defaultsdeep } from 'lodash.defaultsdeep';
+import defaultsdeep from 'lodash.defaultsdeep';
 
 import { parseMessage, Message } from './parseMessage';
 import { CyclingPingTimer } from './cyclingPingTimer';
