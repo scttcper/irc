@@ -1,4 +1,5 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+
 import { IrcClient } from '../src';
 
 import { setupMockClient } from './helpers';
@@ -7,6 +8,7 @@ describe('modes', () => {
   let client: IrcClient;
   afterEach(() => {
     jest.resetAllMocks();
+    // @ts-expect-error
     client.cancelAutoRenick();
   });
 

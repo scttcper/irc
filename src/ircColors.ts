@@ -51,14 +51,14 @@ Object.entries(COLORS).forEach(([code, values]) => {
   // Foreground.
   // If the string begins with /,\d/,
   // it can undersirably apply a background color.
-  let fg = (str: string) => c + code + (badStr.test(str) ? zero : '') + str + c;
+  const fg = (str: string) => c + code + (badStr.test(str) ? zero : '') + str + c;
 
   // Background.
-  let bg = (str: string) => {
+  const bg = (str: string) => {
     // If the string begins with a foreground color already applied,
     // use it to save string space.
     if (colorCodeStr.test(str)) {
-      let str2 = str.substr(3);
+      const str2 = str.substr(3);
       return (
         str.substr(0, 3) + ',' + code + (str2.startsWith(zero) ? str2.substr(zero.length) : str2)
       );
@@ -83,9 +83,9 @@ Object.entries(styles).forEach(([style, code]) => {
 // Some custom helpers.
 const custom = {
   rainbow: (str, colorArr) => {
-    let rainbow = ['red', 'olive', 'yellow', 'green', 'blue', 'navy', 'violet'];
+    const rainbow = ['red', 'olive', 'yellow', 'green', 'blue', 'navy', 'violet'];
     colorArr = colorArr || rainbow;
-    let l = colorArr.length;
+    const l = colorArr.length;
     let i = 0;
 
     return (
@@ -109,13 +109,13 @@ const extras = {
   stripColors: (str: string) => str.replace(/\x03\d{0,2}(,\d{0,2}|\x02\x02)?/g, ''),
 
   stripStyle: (str: string) => {
-    let path: Array<[string, number]> = [];
+    const path: Array<[string, number]> = [];
     for (let i = 0, len = str.length; i < len; i++) {
-      let char = str[i];
+      const char = str[i];
       if (styleChars[char] || char === c) {
-        let lastChar = path[path.length - 1];
+        const lastChar = path[path.length - 1];
         if (lastChar && lastChar[0] === char) {
-          let p0 = lastChar[1];
+          const p0 = lastChar[1];
           // Don't strip out styles with no characters inbetween.
           // And don't strip out color codes.
           if (i - p0 > 1 && char !== c) {
@@ -132,9 +132,9 @@ const extras = {
 
     // Remove any unmatching style characterss.
     // Traverse list backwards to make removing less complicated.
-    for (let char of path.reverse()) {
+    for (const char of path.reverse()) {
       if (char[0] !== c) {
-        let pos = char[1];
+        const pos = char[1];
         str = str.slice(0, pos) + str.slice(pos + 1);
       }
     }
@@ -142,7 +142,7 @@ const extras = {
     return str;
   },
 
-  stripColorsAndStyle: (str: string) => exports.stripColors(exports.stripStyle(str)),
+  stripColorsAndStyle: (str: string): string => exports.stripColors(exports.stripStyle(str)),
 };
 
 Object.keys(extras).forEach(extra => {
@@ -164,7 +164,7 @@ const addGetters = (fn, types) => {
 
       Object.defineProperty(fn, color, {
         get: () => {
-          let f = str => exports[color](fn(str));
+          const f = str => exports[color](fn(str));
           addGetters(f, [...types, ...type]);
           return f;
         },

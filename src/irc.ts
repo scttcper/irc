@@ -1,15 +1,15 @@
 /* eslint-disable @typescript-eslint/restrict-plus-operands */
-import { connect as TlsConnect } from 'tls';
 import { connect as NetConnect } from 'net';
+import { connect as TlsConnect } from 'tls';
 
-import { TypedEmitter } from 'tiny-typed-emitter';
+import charsetDetector from 'chardet';
 import debug from 'debug';
 import * as iconv from 'iconv-lite';
-import charsetDetector from 'chardet';
 import defaultsdeep from 'lodash.defaultsdeep';
+import { TypedEmitter } from 'tiny-typed-emitter';
 
-import { parseMessage, Message } from './parseMessage';
 import { CyclingPingTimer } from './cyclingPingTimer';
+import { Message, parseMessage } from './parseMessage';
 
 const log = debug('irc');
 const lineDelimiter = new RegExp(/\r\n|\r|\n/);
@@ -443,7 +443,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private convertEncoding(str: string | Buffer) {
     if (this.opt.encoding) {
       return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
-        this.debug(err, { str: str, charset: charset });
+        this.debug(err, { str, charset });
       });
     }
 
@@ -491,7 +491,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const writtenLength = truncatingBuffer.write(words, 'utf8');
     const truncatedStr = truncatingBuffer.toString('utf8', 0, writtenLength);
     // and then check for a word boundary to try to keep words together
-    let len = truncatedStr.length - 1;
+    const len = truncatedStr.length - 1;
     let c = truncatedStr[len];
     let cutPos: number;
     let wsLength = 1;
@@ -777,7 +777,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private handleIsupport(args: Message['args']): void {
     for (const arg of args) {
-      let match = /([A-Z]+)=(.*)/.exec(arg);
+      const match = /([A-Z]+)=(.*)/.exec(arg);
       if (!match) {
         continue;
       }
@@ -970,7 +970,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const key = name.toLowerCase();
     if (create) {
       this.chans[key] = this.chans[key] ?? {
-        key: key,
+        key,
         serverName: name,
         users: {},
         modeParams: {},
@@ -1094,7 +1094,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    this._whoisData[nick] = this._whoisData[nick] || { nick: nick };
+    this._whoisData[nick] = this._whoisData[nick] || { nick };
     this._whoisData[nick][key] = value;
   }
 

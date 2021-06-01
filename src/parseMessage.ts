@@ -1,5 +1,5 @@
+import { CodeNames, CODES, CommandTypes } from './codes';
 import ircColors from './ircColors';
-import { CODES, CodeNames, CommandTypes } from './codes';
 
 export type Message = {
   args: string[];
@@ -44,9 +44,10 @@ export function parseMessage(
     if (enableStrictParse) {
       match = /^([_a-zA-Z0-9~[\]\\`^{}|-]*)(!([^@]+)@(.*))?$/.exec(message.prefix);
     } else {
-      match = /^([\u1100-\u11FF\u3040-\u309fF\u30A0-\u30FF\u3130-\u318F\u31F0-\u31FF\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF_a-zA-Z0-9~[\]\\/?`^{}|-]*)(!([^@]+)@(.*))?$/.exec(
-        message.prefix,
-      );
+      match =
+        /^([\u1100-\u11FF\u3040-\u309fF\u30A0-\u30FF\u3130-\u318F\u31F0-\u31FF\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF_a-zA-Z0-9~[\]\\/?`^{}|-]*)(!([^@]+)@(.*))?$/.exec(
+          message.prefix,
+        );
     }
 
     if (match) {

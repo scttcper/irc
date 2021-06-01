@@ -1,7 +1,8 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 
 import { parseMessage } from '../src/parseMessage';
-import { strict, nonStrict, noprefix } from './fixtures/parseMessages';
+
+import { nonStrict, noprefix, strict } from './fixtures/parseMessages';
 
 describe('parseMessage', () => {
   describe('in strict mode', () => {
