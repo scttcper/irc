@@ -18,14 +18,8 @@ jobs:
         run: npm run lint
       - name: test
         run: npm run test:ci
-
-  coverage:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: Atrox/codecov-action@master
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v1
 
   publish:
     needs: build
