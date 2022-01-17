@@ -19,7 +19,7 @@ const defaultOptions = {
   nick: '',
   userName: 'nodebot',
   realName: 'nodeJS IRC client',
-  password: null,
+  password: null as string | null,
   port: 6697,
   debug: false,
   /** List of channels to join ['#general'] */
@@ -42,7 +42,7 @@ const defaultOptions = {
   stripColors: true,
   channelPrefixes: '&#',
   messageSplit: 512,
-  encoding: null,
+  encoding: null as string | null,
   millisecondsOfSilenceBeforePingSent: 15 * 1000,
   millisecondsBeforePingTimeout: 8 * 1000,
   enableStrictParse: false,
@@ -55,7 +55,7 @@ export type ChannelData = {
   key?: string;
   serverName?: string;
   name?: string;
-  users: Users;
+  users: Record<string, string>;
   modeParams?: Record<string, any>;
   mode?: string;
   topic?: string;
@@ -187,7 +187,7 @@ type IrcClientEvents<T = string[]> = Messages<T> & {
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
-  connection: {
+  connection!: {
     currentBuffer: Buffer;
     cyclingPingTimer: CyclingPingTimer;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
@@ -214,7 +214,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       types: '',
     },
     kicklength: 0,
-    maxlist: [],
+    maxlist: [] as number[],
     // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
     maxtargets: {} as Record<string, number>,
     modes: 3,
@@ -351,6 +351,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this._speak('PRIVMSG', target, text);
   }
 
+  notice(target: string, text: string) {
+    this._speak('PRIVMSG', target, text);
+  }
+
   handleData = (chunk: string | Buffer) => {
     this.connection.cyclingPingTimer.notifyOfActivity();
 
@@ -404,7 +408,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   /** Request a whois for the specified ``nick``. */
   async whois(nick: string): Promise<{ nick?: string; user?: string; host?: string }> {
-    const promise = new Promise(resolve => {
+    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(resolve => {
       this.addListener('whois', info => {
         if ((info.nick as string)?.toLowerCase() === nick.toLowerCase()) {
           resolve(info);
@@ -437,7 +441,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private cancelAutoRenick(): void {
-    clearInterval(this.connection?.renickInterval);
+    if (this.connection?.renickInterval) {
+      clearInterval(this.connection.renickInterval);
+    }
   }
 
   private convertEncoding(str: string | Buffer) {
@@ -493,7 +499,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // and then check for a word boundary to try to keep words together
     const len = truncatedStr.length - 1;
     let c = truncatedStr[len];
-    let cutPos: number;
+    let cutPos = len;
     let wsLength = 1;
     if (/\s/.exec(c)) {
       cutPos = len;
@@ -539,7 +545,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this._updateMaxLineLength();
     this.emit('registered', message);
     const res = await this.whois(this.nick);
-    this.nick = res.nick;
+    this.nick = res.nick ?? '';
     this.hostMask = res.user + '@' + res.host;
     this._updateMaxLineLength();
   }
@@ -744,7 +750,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     // Figure out what channels the user is in, update relevant nicks
     Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (message.nick in (chan.users as any)) {
+      if (message.nick in chan.users) {
         chan.users[message.args[0]] = chan.users[message.nick];
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete chan.users[message.nick];
@@ -785,7 +791,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       const param = match[1];
       const value = match[2];
       const type = ['a', 'b', 'c', 'd'] as const;
-      // eslint-disable-next-line default-case
+
       switch (param) {
         case 'CHANLIMIT': {
           value.split(',').forEach(val => {
@@ -830,7 +836,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         case 'MAXLIST': {
           value.split(',').forEach(val => {
             const split = val.split(':');
-            this.supported.maxlist[split[0]] = parseInt(split[1], 10);
+            this.supported.maxlist[Number(split[0])] = parseInt(split[1], 10);
           });
           break;
         }
@@ -869,6 +875,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           this.supported.topiclength = parseInt(value, 10);
           break;
         }
+
+        default: {
+          break;
+        }
       }
     }
   }
@@ -901,10 +911,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           channel.modeParams[mode] = [param];
         }
       } else if (mode in channel.modeParams) {
-        if (isArr) {
-          channel.modeParams[mode] = channel.modeParams[mode].filter(function (v) {
-            return v !== param[0];
-          });
+        if (isArr && Array.isArray(channel.modeParams[mode])) {
+          channel.modeParams[mode] = channel.modeParams[mode].filter((v: string) => v !== param[0]);
         }
 
         if (!isArr || channel.modeParams[mode].length === 0) {
@@ -933,7 +941,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         modeArg = modeArgs.shift();
         if (Object.prototype.hasOwnProperty.call(channel.users, modeArg)) {
           if (adding) {
-            if (channel.users[modeArg].indexOf(this.prefixForMode[mode]) === -1) {
+            if (!channel.users[modeArg].includes(this.prefixForMode[mode])) {
               channel.users[modeArg] += this.prefixForMode[mode];
             }
           } else {
@@ -983,7 +991,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleNotice(message: Message): void {
     const from = message.nick;
-    const to: string | null = message.args[0] ?? null;
+    const to: string | undefined = message.args[0] ?? null;
     const text = message.args[1] ?? '';
 
     if (text.startsWith('\u0001') && text.lastIndexOf('\u0001') > 0) {
@@ -1094,7 +1102,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    this._whoisData[nick] = this._whoisData[nick] || { nick };
+    this._whoisData[nick] = this._whoisData[nick] ?? { nick };
     this._whoisData[nick][key] = value;
   }
 
@@ -1189,7 +1197,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (this.nick === message.args[1]) {
       const channel = this.chanData(message.args[0]);
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete this.chans[channel.key];
+      delete this.chans[channel.key ?? ''];
     } else {
       const channel = this.chanData(message.args[0]);
       if (channel?.users) {
@@ -1205,7 +1213,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handleList(message: Message): void {
     const channel = {
       name: message.args[1],
-      users: message.args[2],
+      users: message.args[2] as any as Record<string, string>,
       topic: message.args[3],
     };
     this.emit('channellist_item', channel);
@@ -1228,7 +1236,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handlePrivmsg(message: Message): void {
     const from = message.nick;
     const to = message.args[0];
-    const text = message.args[1] || '';
+    const text = message.args[1] ?? '';
     if (text.startsWith('\u0001') && text.lastIndexOf('\u0001') > 0) {
       this._handleCTCP(from, to, text, 'privmsg', message);
       return;
@@ -1359,17 +1367,18 @@ function convertEncodingHelper(
   encoding: string,
   errorHandler: (e: Error, charset?: string) => void,
 ) {
-  let charset: string | undefined;
+  let charset: string | null;
   try {
     const buff = Buffer.from(str);
     charset = charsetDetector.detect(buff);
-    const decoded = iconv.decode(buff, charset);
+    const decoded = iconv.decode(buff, charset ?? '');
     return Buffer.from(iconv.encode(decoded, encoding));
   } catch (err) {
     if (!errorHandler) {
+      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       throw err;
     }
 
-    errorHandler(err, charset);
+    errorHandler(err as Error, charset);
   }
 }

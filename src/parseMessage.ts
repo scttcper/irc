@@ -66,7 +66,7 @@ export function parseMessage(
   message.commandType = 'normal';
   line = line.replace(/^[^ ]+ +/, '');
 
-  const codeData = CODES[message.rawCommand];
+  const codeData = CODES[message.rawCommand as keyof typeof CODES];
   if (codeData) {
     if ('name' in codeData) {
       message.command = codeData.name;
