@@ -27,9 +27,9 @@ const styles = {
   monospace: '\x11',
 };
 
-const styleChars = {};
-Object.keys(styles).forEach(key => {
-  styleChars[styles[key]] = true;
+const styleChars: Record<string, boolean> = {};
+Object.values(styles).forEach(value => {
+  styleChars[value] = true;
 });
 
 // Coloring character.
@@ -82,7 +82,7 @@ Object.entries(styles).forEach(([style, code]) => {
 
 // Some custom helpers.
 const custom = {
-  rainbow: (str, colorArr) => {
+  rainbow: (str: string, colorArr: string[]) => {
     const rainbow = ['red', 'olive', 'yellow', 'green', 'blue', 'navy', 'violet'];
     colorArr = colorArr || rainbow;
     const l = colorArr.length;
@@ -98,9 +98,9 @@ const custom = {
   },
 };
 
-Object.keys(custom).forEach(extra => {
+Object.entries(custom).forEach(([extra, value]) => {
   allColors.custom.push(extra);
-  exports[extra] = custom[extra];
+  exports[extra] = value;
 });
 
 // Extras.
@@ -145,15 +145,15 @@ const extras = {
   stripColorsAndStyle: (str: string): string => exports.stripColors(exports.stripStyle(str)),
 };
 
-Object.keys(extras).forEach(extra => {
+Object.entries(extras).forEach(([extra, value]) => {
   allColors.extras.push(extra);
-  exports[extra] = extras[extra];
+  exports[extra] = value;
 });
 
 // Adds all functions to each other so they can be chained.
-const addGetters = (fn, types) => {
+const addGetters = (fn: any, types: string[]) => {
   Object.entries(allColors).forEach(([type, values]) => {
-    if (types.indexOf(type) > -1) {
+    if (types.includes(type)) {
       return;
     }
 
@@ -164,7 +164,7 @@ const addGetters = (fn, types) => {
 
       Object.defineProperty(fn, color, {
         get: () => {
-          const f = str => exports[color](fn(str));
+          const f = (str: string) => exports[color](fn(str));
           addGetters(f, [...types, ...type]);
           return f;
         },
@@ -173,8 +173,8 @@ const addGetters = (fn, types) => {
   });
 };
 
-Object.keys(allColors).forEach(type => {
-  allColors[type].forEach(color => {
+Object.entries(allColors).forEach(([type, value]) => {
+  value.forEach(color => {
     addGetters(exports[color], [type]);
   });
 });

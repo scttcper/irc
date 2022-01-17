@@ -1,20 +1,14 @@
 {
-  "compileOnSave": false,
+  "extends": "@sindresorhus/tsconfig",
   "compilerOptions": {
-    "moduleResolution": "Node",
-    "lib": ["ES2020"],
-    "target": "ES2019",
-    "module": "CommonJS",
-    "esModuleInterop": false,
-    "allowSyntheticDefaultImports": true,
-    "strict": false,
-    "newLine": "lf",
-    "noImplicitAny": false,
+    "lib": ["ES2020", "DOM"],
+    "outDir": "dist",
     "noImplicitReturns": false,
-    "noFallthroughCasesInSwitch": true,
-    "noEmitOnError": true,
-    "noUnusedLocals": true,
-    "declaration": true,
-    "outDir": "dist"
+    "noUncheckedIndexedAccess": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "strictNullChecks": false
+  },
+  "ts-node": {
+    "transpileOnly": true,
   }
 }
