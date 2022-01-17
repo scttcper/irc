@@ -49,7 +49,7 @@
   "jest": {
     "testEnvironment": "node",
     "coverageProvider": "v8",
-    "rootDir": "test"
+    "testPathIgnorePatterns": ["/node_modules/", "/dist/"]
   },
   "babel": {
     "presets": [
