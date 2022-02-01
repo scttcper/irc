@@ -2,14 +2,17 @@
 name: release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: [test]
+    types:
+      - completed
+    branches: [main]
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: checkout
         uses: actions/checkout@master
@@ -18,7 +21,6 @@ jobs:
         with:
           node-version: 16
       - run: npm ci
-      - run: npm test
       - run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
