@@ -6,6 +6,7 @@
     "noImplicitReturns": false,
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
+    "importHelpers": false,
     "strictNullChecks": false
   },
   "ts-node": {

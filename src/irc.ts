@@ -8,8 +8,8 @@ import * as iconv from 'iconv-lite';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
-import { CyclingPingTimer } from './cyclingPingTimer';
-import { Message, parseMessage } from './parseMessage';
+import { CyclingPingTimer } from './cyclingPingTimer.js';
+import { Message, parseMessage } from './parseMessage.js';
 
 const log = debug('irc');
 const lineDelimiter = new RegExp(/\r\n|\r|\n/);

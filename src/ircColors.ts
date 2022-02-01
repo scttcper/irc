@@ -46,6 +46,8 @@ const allColors = {
   extras: [] as string[],
 };
 
+const obj: Record<string, any> = {};
+
 // Make color functions for both foreground and background.
 Object.entries(COLORS).forEach(([code, values]) => {
   // Foreground.
@@ -70,14 +72,14 @@ Object.entries(COLORS).forEach(([code, values]) => {
   values.forEach(color => {
     allColors.fg.push(color);
     allColors.bg.push('bg' + color);
-    exports[color] = fg;
-    exports['bg' + color] = bg;
+    obj[color] = fg;
+    obj['bg' + color] = bg;
   });
 });
 
 // Style functions.
 Object.entries(styles).forEach(([style, code]) => {
-  exports[style] = (str: string) => code + str + code;
+  obj[style] = (str: string) => code + str + code;
 });
 
 // Some custom helpers.
@@ -92,7 +94,7 @@ const custom = {
       str
         .split('')
         // eslint-disable-next-line no-negated-condition
-        .map(c => (c !== ' ' ? exports[colorArr[i++ % l]](c) : c))
+        .map(c => (c !== ' ' ? obj[colorArr[i++ % l]](c) : c))
         .join('')
     );
   },
@@ -100,7 +102,7 @@ const custom = {
 
 Object.entries(custom).forEach(([extra, value]) => {
   allColors.custom.push(extra);
-  exports[extra] = value;
+  obj[extra] = value;
 });
 
 // Extras.
@@ -142,12 +144,12 @@ const extras = {
     return str;
   },
 
-  stripColorsAndStyle: (str: string): string => exports.stripColors(exports.stripStyle(str)),
+  stripColorsAndStyle: (str: string): string => obj.stripColors(obj.stripStyle(str)),
 };
 
 Object.entries(extras).forEach(([extra, value]) => {
   allColors.extras.push(extra);
-  exports[extra] = value;
+  obj[extra] = value;
 });
 
 // Adds all functions to each other so they can be chained.
@@ -164,8 +166,8 @@ const addGetters = (fn: any, types: string[]) => {
 
       Object.defineProperty(fn, color, {
         get: () => {
-          const f = (str: string) => exports[color](fn(str));
-          addGetters(f, [...types, ...type]);
+          const f = (str: string) => obj[color](fn(str));
+          addGetters(f, [...types, type]);
           return f;
         },
       });
@@ -175,8 +177,8 @@ const addGetters = (fn: any, types: string[]) => {
 
 Object.entries(allColors).forEach(([type, value]) => {
   value.forEach(color => {
-    addGetters(exports[color], [type]);
+    addGetters(obj[color], [type]);
   });
 });
 
-export default extras;
+export default obj;

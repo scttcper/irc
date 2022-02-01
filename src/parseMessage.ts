@@ -1,5 +1,5 @@
-import { CodeNames, CODES, CommandTypes } from './codes';
-import ircColors from './ircColors';
+import { CodeNames, CODES, CommandTypes } from './codes.js';
+import ircColors from './ircColors.js';
 
 export type Message = {
   args: string[];

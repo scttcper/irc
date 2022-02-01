@@ -1,6 +1,7 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import test from 'ava';
+import * as sinon from 'sinon';
 
-import { setupMockClient } from './helpers';
+import { setupMockClient } from './helpers.js';
 
 const messages = `:origin.irc.xx-net.org NOTICE * :*** Looking up your hostname...
 :origin.irc.xx-net.org NOTICE * :*** Found your hostname (cached)
@@ -29,14 +30,12 @@ PING :EAA41EAE
 :NickServ!nickserv@nickserv.services.irc.xx-net.org NOTICE testbot :If you do not change within 1 minute, I wil|chunk|l change your nick.
 |chunk|`;
 
-describe('handle data', () => {
-  it('should handle initial connection', () => {
-    const client = setupMockClient('testbot');
-    const emitSpy = jest.spyOn(client, 'emit');
-    for (const chunk of messages.split('|chunk|')) {
-      client.handleData(chunk);
-    }
+test('should handle initial connection', t => {
+  const client = setupMockClient('testbot');
+  const emitSpy = sinon.spy(client, 'emit');
+  for (const chunk of messages.split('|chunk|')) {
+    client.handleData(chunk);
+  }
 
-    expect(emitSpy.mock.calls).toMatchSnapshot();
-  });
+  t.snapshot(emitSpy.args);
 });
