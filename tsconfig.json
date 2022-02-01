@@ -1,11 +1,12 @@
 {
   "extends": "@sindresorhus/tsconfig",
   "compilerOptions": {
-    "lib": ["ES2020", "DOM"],
+    "lib": ["ES2021"],
     "outDir": "dist",
     "noImplicitReturns": false,
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
+    "importHelpers": false,
     "strictNullChecks": false
   },
   "ts-node": {

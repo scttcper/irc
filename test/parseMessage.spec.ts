@@ -1,25 +1,25 @@
-import { describe, expect, it } from '@jest/globals';
+import test from 'ava';
 
-import { parseMessage } from '../src/parseMessage';
+import { parseMessage } from '../src/parseMessage.js';
 
-import { nonStrict, noprefix, strict } from './fixtures/parseMessages';
+import { nonStrict, noprefix, strict } from './fixtures/parseMessages.js';
 
-describe('parseMessage', () => {
-  describe('in strict mode', () => {
-    it.each(strict)('parses nonstandard fixtures according to spec - %s', (message, result) => {
-      const stripColors = result.stripColors ?? false;
-      delete result.stripColors;
-      expect(parseMessage(message, stripColors, true)).toEqual(result);
-    });
+for (const [message, result] of strict) {
+  test(`in strict mode it parses nonstandard fixtures according to spec - ${message}`, t => {
+    const stripColors = result.stripColors ?? false;
+    delete result.stripColors;
+    t.deepEqual(parseMessage(message, stripColors, true), result);
   });
+}
 
-  describe('in non-strict mode', () => {
-    it.each(nonStrict)('parses Unicode fixtures correctly - %s', (message, result) => {
-      expect(parseMessage(message)).toEqual(result);
-    });
-
-    it.each(noprefix)('does not crash with no prefix - %s', (message, result) => {
-      expect(parseMessage(message)).toEqual(result);
-    });
+for (const [message, result] of nonStrict) {
+  test(`in non-strict mode parses Unicode fixtures correctly - ${message}`, t => {
+    t.deepEqual(parseMessage(message), result);
   });
-});
+}
+
+for (const [message, result] of noprefix) {
+  test(`in non-strict mode does not crash with no prefix - ${message}`, t => {
+    t.deepEqual(parseMessage(message), result);
+  });
+}

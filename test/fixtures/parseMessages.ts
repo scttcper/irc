@@ -1,4 +1,4 @@
-export const strict = [
+export const strict: Array<[string, any]> = [
   [
     ':irc.dollyfish.net.nz 372 nodebot :The message of the day was last changed: 2012-6-16 23:57',
     {
@@ -158,7 +158,7 @@ export const strict = [
   ],
 ];
 
-export const nonStrict = [
+export const nonStrict: Array<[string, any]> = [
   [
     ':견본!~examplename@example.host PRIVMSG #channel :test message',
     {
@@ -200,7 +200,7 @@ export const nonStrict = [
   ],
 ];
 
-export const noprefix = [
+export const noprefix: Array<[string, any]> = [
   [
     '477 nodebot #channel :Cannot join channel (+r) - you need to be identified with services',
     {

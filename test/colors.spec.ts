@@ -1,26 +1,22 @@
-import { describe, expect, it } from '@jest/globals';
+import test from 'ava';
 
-import { wrap } from '../src/colors';
+import { wrap } from '../src/colors.js';
 
-describe('Colors', () => {
-  describe('wrap', () => {
-    it('does nothing if invalid color given', () => {
-      // @ts-expect-error
-      expect(wrap('unknown', 'test')).toEqual('test');
-    });
+test('does nothing if invalid color given', t => {
+  // @ts-expect-error
+  t.is(wrap('unknown', 'test'), 'test');
+});
 
-    it('wraps in color without resetColor given', () => {
-      // @ts-expect-error
-      expect(wrap('white', 'test')).toEqual('\u000300test\u000f');
-    });
+test('wraps in color without resetColor given', t => {
+  // @ts-expect-error
+  t.is(wrap('white', 'test'), '\u000300test\u000f');
+});
 
-    it('wraps in color with resetColor given', () => {
-      expect(wrap('white', 'test', 'black')).toEqual('\u000300test\u000301');
-    });
+test('wraps in color with resetColor given', t => {
+  t.is(wrap('white', 'test', 'black'), '\u000300test\u000301');
+});
 
-    it('wraps in color even with invalid resetColor given', () => {
-      // @ts-expect-error
-      expect(wrap('white', 'test', 'invalid')).toEqual('\u000300test\u000f');
-    });
-  });
+test('wraps in color even with invalid resetColor given', t => {
+  // @ts-expect-error
+  t.is(wrap('white', 'test', 'invalid'), '\u000300test\u000f');
 });

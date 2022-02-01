@@ -1,0 +1,23 @@
+name: test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@master
+      - name: setup node
+        uses: actions/setup-node@master
+        with:
+          node-version: 16
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:ci
+      - name: codecov
+        uses: codecov/codecov-action@v2

@@ -1,5 +1,5 @@
-import { CodeNames, CODES, CommandTypes } from './codes';
-import ircColors from './ircColors';
+import { CodeNames, CODES, CommandTypes } from './codes.js';
+import { stripColorsAndStyle } from './ircColors.js';
 
 export type Message = {
   args: string[];
@@ -33,7 +33,7 @@ export function parseMessage(
   };
 
   if (stripColors) {
-    line = ircColors.stripColorsAndStyle(line);
+    line = stripColorsAndStyle(line);
   }
 
   // Parse prefix
