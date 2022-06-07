@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
 /* eslint-disable @typescript-eslint/restrict-plus-operands */
 import { connect as NetConnect } from 'net';
 import { connect as TlsConnect } from 'tls';
@@ -21,7 +22,6 @@ const defaultOptions = {
   realName: 'nodeJS IRC client',
   password: null as string | null,
   port: 6697,
-  debug: false,
   /** List of channels to join ['#general'] */
   channels: [] as string[],
   autoRejoin: false,
@@ -336,7 +336,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   join(channel: string) {
-    this.once(`join${channel.toLowerCase()}`, () => {
+    this.once(`join${channel.toLowerCase()}` as any, () => {
       // Append to opts.channel on successful join, so it rejoins on reconnect.
       const channelIndex = this._findChannelFromStrings(channel);
       if (channelIndex === -1) {
@@ -1244,7 +1244,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit('message#' + to.toLowerCase(), from, to, text, message);
+      this.emit(('message#' + to.toLowerCase()) as any, from, to, text, message);
     }
 
     if (to.toUpperCase() === this.nick.toUpperCase()) {
@@ -1375,7 +1375,6 @@ function convertEncodingHelper(
     return Buffer.from(iconv.encode(decoded, encoding));
   } catch (err) {
     if (!errorHandler) {
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
       throw err;
     }
 

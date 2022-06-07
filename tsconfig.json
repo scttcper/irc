@@ -1,15 +1,11 @@
 {
   "extends": "@sindresorhus/tsconfig",
   "compilerOptions": {
-    "lib": ["ES2021"],
     "outDir": "dist",
     "noImplicitReturns": false,
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
     "importHelpers": false,
     "strictNullChecks": false
-  },
-  "ts-node": {
-    "transpileOnly": true,
   }
 }

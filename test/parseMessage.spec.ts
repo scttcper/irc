@@ -1,25 +1,25 @@
-import test from 'ava';
+import { expect, it } from 'vitest';
 
 import { parseMessage } from '../src/parseMessage.js';
 
 import { nonStrict, noprefix, strict } from './fixtures/parseMessages.js';
 
 for (const [message, result] of strict) {
-  test(`in strict mode it parses nonstandard fixtures according to spec - ${message}`, t => {
+  it(`in strict mode it parses nonstandard fixtures according to spec - ${message}`, () => {
     const stripColors = result.stripColors ?? false;
     delete result.stripColors;
-    t.deepEqual(parseMessage(message, stripColors, true), result);
+    expect(parseMessage(message, stripColors, true)).toEqual(result);
   });
 }
 
 for (const [message, result] of nonStrict) {
-  test(`in non-strict mode parses Unicode fixtures correctly - ${message}`, t => {
-    t.deepEqual(parseMessage(message), result);
+  it(`in non-strict mode parses Unicode fixtures correctly - ${message}`, () => {
+    expect(parseMessage(message)).toEqual(result);
   });
 }
 
 for (const [message, result] of noprefix) {
-  test(`in non-strict mode does not crash with no prefix - ${message}`, t => {
-    t.deepEqual(parseMessage(message), result);
+  it(`in non-strict mode does not crash with no prefix - ${message}`, () => {
+    expect(parseMessage(message)).toEqual(result);
   });
 }

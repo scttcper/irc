@@ -1,4 +1,4 @@
-import * as sinon from 'sinon';
+import { vi } from 'vitest';
 
 import { IrcClient, IrcOptions } from '../src/irc.js';
 
@@ -10,9 +10,9 @@ export function setupMockClient(nick: string, options?: Partial<IrcOptions>): Ir
   client.connection = {
     currentBuffer: Buffer.from(''),
     // @ts-expect-error
-    socket: { write: sinon.fake() },
+    socket: { write: vi.fn() },
     // @ts-expect-error
-    cyclingPingTimer: { notifyOfActivity: sinon.fake() },
+    cyclingPingTimer: { notifyOfActivity: vi.fn() },
   };
   client.nick = nick;
 
