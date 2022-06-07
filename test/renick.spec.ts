@@ -1,15 +1,14 @@
-import test from 'ava';
-import * as sinon from 'sinon';
+import { expect, it, vi } from 'vitest';
 
 import { setupMockClient } from './helpers.js';
 
-test('renick attains suitable fallback', async t => {
+it('renick attains suitable fallback', async () => {
   const client = setupMockClient('testbot', { autoRenick: true, renickDelay: 300, renickCount: 1 });
 
-  const emitSpy = sinon.spy(client, 'emit');
+  const emitSpy = vi.spyOn(client, 'emit');
   client.handleData(':localhost 433 * testbot :Nickname is already in use.\r\n');
-  t.is(emitSpy.firstCall.args[0], 'raw');
-  t.like(emitSpy.firstCall.args[1], {
+  expect(emitSpy.mock.calls[0][0]).toBe('raw');
+  expect(emitSpy.mock.calls[0][1]).toEqual({
     args: ['*', 'testbot', 'Nickname is already in use.'],
     prefix: 'localhost',
     nick: 'localhost',
@@ -19,32 +18,34 @@ test('renick attains suitable fallback', async t => {
   });
 
   // @ts-expect-error
-  t.is(client.connection.socket.write.firstCall.args[0], 'NICK testbot1\r\n');
-  // @ts-expect-error
-  client.connection.socket.write.resetHistory();
+  expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot1\r\n');
+  vi.clearAllMocks();
 
-  t.is(client.nick, 'testbot1');
-  t.is(client.nickMod, 1);
-
-  client.handleData(':localhost 433 * testbot1 :Nickname is already in use.\r\n');
-
-  // @ts-expect-error
-  t.is(client.connection.socket.write.firstCall.args[0], 'NICK testbot2\r\n');
+  expect(client.nick).toBe('testbot1');
+  expect(client.nickMod).toBe(1);
 
   client.handleData(':localhost 433 * testbot1 :Nickname is already in use.\r\n');
-  t.is(emitSpy.firstCall.args[0], 'raw');
-  t.like(emitSpy.firstCall.args[1], {
-    args: ['*', 'testbot', 'Nickname is already in use.'],
-    command: 'err_nicknameinuse',
-    commandType: 'error',
-    nick: 'localhost',
-    prefix: 'localhost',
-    rawCommand: '433',
-  });
 
   // @ts-expect-error
-  t.is(client.connection.socket.write.firstCall.args[0], 'NICK testbot2\r\n');
-  t.is(client.nick, 'testbot3');
+  expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot2\r\n');
+  vi.clearAllMocks();
+
+  client.handleData(':localhost 433 * testbot1 :Nickname is already in use.\r\n');
+  expect(emitSpy.mock.calls[0][0]).toBe('raw');
+  expect(emitSpy.mock.calls[0][1]).toEqual(
+    expect.objectContaining({
+      args: ['*', 'testbot1', 'Nickname is already in use.'],
+      command: 'err_nicknameinuse',
+      commandType: 'error',
+      nick: 'localhost',
+      prefix: 'localhost',
+      rawCommand: '433',
+    }),
+  );
+
+  // @ts-expect-error
+  expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot3\r\n');
+  expect(client.nick).toBe('testbot3');
 
   // @ts-expect-error
   client.cancelAutoRenick();

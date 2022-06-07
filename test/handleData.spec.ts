@@ -1,5 +1,4 @@
-import test from 'ava';
-import * as sinon from 'sinon';
+import { describe, expect, it, vi } from 'vitest';
 
 import { setupMockClient } from './helpers.js';
 
@@ -30,12 +29,14 @@ PING :EAA41EAE
 :NickServ!nickserv@nickserv.services.irc.xx-net.org NOTICE testbot :If you do not change within 1 minute, I wil|chunk|l change your nick.
 |chunk|`;
 
-test('should handle initial connection', t => {
-  const client = setupMockClient('testbot');
-  const emitSpy = sinon.spy(client, 'emit');
-  for (const chunk of messages.split('|chunk|')) {
-    client.handleData(chunk);
-  }
+describe('handle data', () => {
+  it('should handle initial connection', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+    for (const chunk of messages.split('|chunk|')) {
+      client.handleData(chunk);
+    }
 
-  t.snapshot(emitSpy.args);
+    expect(emitSpy.mock.calls).toMatchSnapshot();
+  });
 });

@@ -1,139 +1,114 @@
-import test from 'ava';
-import * as sinon from 'sinon';
+import { describe, expect, it, vi } from 'vitest';
 
 import { setupMockClient } from './helpers.js';
 
-test('emits events per fixtures', t => {
-  const client = setupMockClient('testbot');
+describe('user events', () => {
+  it('emits events per fixtures', () => {
+    const client = setupMockClient('testbot');
 
-  // welcome bot, give relevant prefix symbols
-  client.handleData(':localhost 311 testbot testbot ~testbot EXAMPLE.HOST * :testbot\r\n');
-  client.handleData(':localhost 005 testbot PREFIX=(qaohv)~&@%+ :are supported by this server\r\n');
-  t.assert('testbot' in client._whoisData);
-  t.deepEqual(client._whoisData.testbot, {
-    nick: 'testbot',
-    user: '~testbot',
-    host: 'EXAMPLE.HOST',
-    realname: 'testbot',
-  });
+    // welcome bot, give relevant prefix symbols
+    client.handleData(':localhost 311 testbot testbot ~testbot EXAMPLE.HOST * :testbot\r\n');
+    client.handleData(
+      ':localhost 005 testbot PREFIX=(qaohv)~&@%+ :are supported by this server\r\n',
+    );
+    expect(client._whoisData).toHaveProperty('testbot');
+    expect(client._whoisData.testbot).toEqual({
+      nick: 'testbot',
+      user: '~testbot',
+      host: 'EXAMPLE.HOST',
+      realname: 'testbot',
+    });
 
-  // #test: testbot joins. users: testbot, user1, user2
-  const emitSpy = sinon.spy(client, 'emit');
-  client.join('#test');
-  client.handleData(':testbot!~testbot@EXAMPLE.HOST JOIN :#test\r\n');
-  t.deepEqual<any, string[]>(emitSpy.secondCall.args, ['join', '#test', 'testbot']);
-  t.assert('#test' in client.chans);
-  t.deepEqual(client.chans['#test'], {
-    key: '#test',
-    mode: '',
-    modeParams: {},
-    serverName: '#test',
-    users: {},
-  });
-  emitSpy.resetHistory();
-  client.handleData(':localhost 353 testbot = #test :testbot user1 @user2 user3\r\n');
-  client.handleData(':localhost 366 testbot #test :End of /NAMES list.\r\n');
-  t.deepEqual<any, any>(emitSpy.thirdCall.args, [
-    'names',
-    '#test',
-    {
+    // #test: testbot joins. users: testbot, user1, user2
+    const emitSpy = vi.spyOn(client, 'emit');
+    client.join('#test');
+    client.handleData(':testbot!~testbot@EXAMPLE.HOST JOIN :#test\r\n');
+    expect(emitSpy).toBeCalledWith('join', '#test', 'testbot');
+    expect(client.chans).toHaveProperty('#test');
+    expect(client.chans['#test']).toEqual({
+      key: '#test',
+      mode: '',
+      modeParams: {},
+      serverName: '#test',
+      users: {},
+    });
+    emitSpy.mockClear();
+    client.handleData(':localhost 353 testbot = #test :testbot user1 @user2 user3\r\n');
+    client.handleData(':localhost 366 testbot #test :End of /NAMES list.\r\n');
+    expect(emitSpy).toBeCalledWith('names', '#test', {
       testbot: '',
       user1: '',
       user2: '@',
       user3: '',
-    },
-  ]);
+    });
 
-  emitSpy.resetHistory();
+    emitSpy.mockClear();
 
-  // #test2: testbot joins. users: testbot, user1, user3
-  client.join('#test2');
-  client.handleData(':testbot!~testbot@EXAMPLE.HOST JOIN :#test2\r\n');
-  t.deepEqual<any, string[]>(emitSpy.secondCall.args, ['join', '#test2', 'testbot']);
-  emitSpy.resetHistory();
-
-  client.handleData(':localhost 353 testbot = #test2 :testbot user1 user3\r\n');
-  client.handleData(':localhost 366 testbot #test2 :End of /NAMES list.\r\n');
-  t.deepEqual<any, any>(emitSpy.thirdCall.args, [
-    'names',
-    '#test2',
-    {
+    // #test2: testbot joins. users: testbot, user1, user3
+    client.join('#test2');
+    client.handleData(':testbot!~testbot@EXAMPLE.HOST JOIN :#test2\r\n');
+    expect(emitSpy).toBeCalledWith('join', '#test2', 'testbot');
+    client.handleData(':localhost 353 testbot = #test2 :testbot user1 user3\r\n');
+    client.handleData(':localhost 366 testbot #test2 :End of /NAMES list.\r\n');
+    expect(emitSpy).toBeCalledWith('names', '#test2', {
       testbot: '',
       user1: '',
       user3: '',
-    },
-  ]);
+    });
 
-  emitSpy.resetHistory();
+    emitSpy.mockClear();
 
-  // #test: user1 parts, joins
-  client.handleData(':user1!~user1@example.host PART #test :Leaving\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args, ['part', '#test', 'user1', 'Leaving']);
-  emitSpy.resetHistory();
+    // #test: user1 parts, joins
+    client.handleData(':user1!~user1@example.host PART #test :Leaving\r\n');
+    expect(emitSpy).toBeCalledWith('part', '#test', 'user1', 'Leaving');
+    client.handleData(':user1!~user1@example.host JOIN #test\r\n');
+    expect(emitSpy).toBeCalledWith('join', '#test', 'user1');
 
-  client.handleData(':user1!~user1@example.host JOIN #test\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args, ['join', '#test', 'user1']);
+    emitSpy.mockClear();
 
-  emitSpy.resetHistory();
+    // user1 quits (#test, #test2)
+    client.handleData(':user1!~user1@example.host QUIT :Quit: Leaving\r\n');
+    expect(emitSpy).toBeCalledWith(
+      'quit',
+      'user1',
+      'Quit: Leaving',
+      ['#test', '#test2'],
+      expect.anything(),
+    );
 
-  // user1 quits (#test, #test2)
-  client.handleData(':user1!~user1@example.host QUIT :Quit: Leaving\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args.slice(0, 4), [
-    'quit',
-    'user1',
-    'Quit: Leaving',
-    ['#test', '#test2'],
-  ]);
+    emitSpy.mockClear();
 
-  emitSpy.resetHistory();
+    // user2 renames to user4 (#test)
+    client.handleData(':user2!~user2@example.host NICK :user4\r\n');
+    expect(emitSpy).toBeCalledWith('nick', 'user2', 'user4', ['#test'], expect.anything());
+    // user3 renames to user5 (#test, #test2)
+    client.handleData(':user3!~user3@example.host NICK :user5\r\n');
+    expect(emitSpy).toBeCalledWith(
+      'nick',
+      'user3',
+      'user5',
+      ['#test', '#test2'],
+      expect.anything(),
+    );
 
-  // user2 renames to user4 (#test)
-  client.handleData(':user2!~user2@example.host NICK :user4\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args.slice(0, 4), ['nick', 'user2', 'user4', ['#test']]);
-  emitSpy.resetHistory();
-  // user3 renames to user5 (#test, #test2)
-  client.handleData(':user3!~user3@example.host NICK :user5\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args.slice(0, 4), [
-    'nick',
-    'user3',
-    'user5',
-    ['#test', '#test2'],
-  ]);
+    emitSpy.mockClear();
 
-  emitSpy.resetHistory();
+    // #test: user6 joins
+    client.handleData(':user6!~user6@example.host JOIN #test\r\n');
+    expect(emitSpy).toBeCalledWith('join', '#test', 'user6');
 
-  // #test: user6 joins
-  client.handleData(':user6!~user6@example.host JOIN #test\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args, ['join', '#test', 'user6']);
+    // #test: user6 is kicked by user4
+    client.handleData(':user4!~user2@example.host KICK #test user6 :Test kick\r\n');
+    expect(emitSpy).toBeCalledWith('kick', '#test', 'user6', 'user4', 'Test kick');
+    // user4 quits (#test)
+    client.handleData(':user4!~user2@example.host QUIT :Quit: Leaving\r\n');
+    expect(emitSpy).toBeCalledWith('quit', 'user4', 'Quit: Leaving', ['#test'], expect.anything());
 
-  emitSpy.resetHistory();
-
-  // #test: user6 is kicked by user4
-  client.handleData(':user4!~user2@example.host KICK #test user6 :Test kick\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args, ['kick', '#test', 'user6', 'user4', 'Test kick']);
-
-  emitSpy.resetHistory();
-  // user4 quits (#test)
-  client.handleData(':user4!~user2@example.host QUIT :Quit: Leaving\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args.slice(0, 4), [
-    'quit',
-    'user4',
-    'Quit: Leaving',
-    ['#test'],
-  ]);
-
-  emitSpy.resetHistory();
-
-  // #test: user5 parts
-  client.handleData(':user5!~user3@example.host PART #test :Bye\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args, ['part', '#test', 'user5', 'Bye']);
-  emitSpy.resetHistory();
-  // user5 quits (#test2)
-  client.handleData(':user5!~user3@example.host QUIT :See ya\r\n');
-  t.deepEqual<any, any>(emitSpy.secondCall.args.slice(0, 4), [
-    'quit',
-    'user5',
-    'See ya',
-    ['#test2'],
-  ]);
+    // #test: user5 parts
+    client.handleData(':user5!~user3@example.host PART #test :Bye\r\n');
+    expect(emitSpy).toBeCalledWith('part', '#test', 'user5', 'Bye');
+    // user5 quits (#test2)
+    client.handleData(':user5!~user3@example.host QUIT :See ya\r\n');
+    expect(emitSpy).toBeCalledWith('quit', 'user5', 'See ya', ['#test2'], expect.anything());
+  });
 });
