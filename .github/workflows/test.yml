@@ -21,5 +21,3 @@ jobs:
       - run: npm run test:ci
       - name: codecov
         uses: codecov/codecov-action@v3
-        with:
-          files: ./junit.xml
