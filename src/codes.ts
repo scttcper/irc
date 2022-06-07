@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
 export const CODES = {
   '001': {
     name: 'rpl_welcome',
