@@ -6,5 +6,3 @@ coverage:
 comment:
   require_changes: true
   behavior: once
-fixes:
-  - "::src/"
