@@ -576,9 +576,9 @@ export const CODES = {
 export type CodeNames =
   | {
       // Map through all the keys of the given base type.
-      [Key in keyof typeof CODES]: typeof CODES[Key] extends { name: string } // Pick only keys with types extending the given `Condition` type.
+      [Key in keyof typeof CODES]: (typeof CODES)[Key] extends { name: string } // Pick only keys with types extending the given `Condition` type.
         ? // Retain this key since the condition passes.
-          typeof CODES[Key]['name']
+          (typeof CODES)[Key]['name']
         : // Discard this key since the condition fails.
           never;
 
@@ -586,4 +586,4 @@ export type CodeNames =
     }[keyof typeof CODES]
   | string;
 
-export type CommandTypes = typeof CODES[keyof typeof CODES]['type'];
+export type CommandTypes = (typeof CODES)[keyof typeof CODES]['type'];

@@ -13,7 +13,7 @@ import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { Message, parseMessage } from './parseMessage.js';
 
 const log = debug('irc');
-const lineDelimiter = new RegExp(/\r\n|\r|\n/);
+const lineDelimiter = /\r\n|\r|\n/;
 
 const defaultOptions = {
   host: '',
@@ -550,7 +550,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this._updateMaxLineLength();
   }
 
-  // eslint-disable-next-line complexity
   private _handleRawMessage(message: Message): void {
     switch (message.command) {
       case 'rpl_welcome':
@@ -1020,7 +1019,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     text = text.slice(0, text.indexOf('\u0001'));
     const parts = text.split(' ');
     this.emit('ctcp', from, to, text, type, message);
-    this.emit(`ctcp-${type}` as 'ctcp-notice' | 'ctcp-notice', from, to, text, message);
+    this.emit(`ctcp-${type}` as 'ctcp-notice', from, to, text, message);
     if (type === 'privmsg' && text === 'VERSION') {
       this.emit('ctcp-version', from, to, message);
     }
