@@ -17,8 +17,12 @@
     "typescript"
   ],
   "scripts": {
-    "lint": "eslint --ext .ts .",
-    "lint:fix": "eslint --fix --ext .ts .",
+    "lint:biome": "biome check src test",
+    "lint:eslint": "eslint --ext .ts .",
+    "lint": "npm run lint:biome && npm run lint:eslint",
+    "lint:biome:fix": "biome check src test --apply",
+    "lint:eslint:fix": "eslint --fix --ext .ts .",
+    "lint:fix": "npm run lint:biome:fix && npm run lint:eslint:fix",
     "prepare": "npm run build",
     "build": "tsc",
     "test": "vitest run",
@@ -33,7 +37,8 @@
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
-    "@ctrl/eslint-config": "4.0.13",
+    "@biomejs/biome": "1.4.1",
+    "@ctrl/eslint-config-biome": "1.0.3",
     "@sindresorhus/tsconfig": "5.0.0",
     "@types/debug": "4.1.12",
     "@types/lodash.defaultsdeep": "4.6.9",

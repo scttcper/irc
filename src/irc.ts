@@ -465,9 +465,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     text
       .toString()
       .split(/\r?\n/)
-      .filter(line => {
-        return line.length > 0;
-      })
+      .filter(line => line.length > 0)
       .forEach(line => {
         const linesToSend = this._splitLongLines(line, maxLength);
         linesToSend.forEach(toSend => {

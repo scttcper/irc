@@ -116,6 +116,6 @@ describe('user events', () => {
     const emitSpy = vi.spyOn(client.connection.socket, 'write');
 
     client.part('#test');
-    expect(emitSpy).toBeCalledWith('PART #test' + '\r\n');
+    expect(emitSpy).toBeCalledWith('PART #test\r\n');
   });
 });
