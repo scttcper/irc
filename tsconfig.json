@@ -6,6 +6,7 @@
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
     "importHelpers": false,
-    "strictNullChecks": false
+    "strictNullChecks": false,
+    "esModuleInterop": true
   }
 }

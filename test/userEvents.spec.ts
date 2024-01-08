@@ -111,4 +111,11 @@ describe('user events', () => {
     client.handleData(':user5!~user3@example.host QUIT :See ya\r\n');
     expect(emitSpy).toBeCalledWith('quit', 'user5', 'See ya', ['#test2'], expect.anything());
   });
+  it('can leave a channel', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client.connection.socket, 'write');
+
+    client.part('#test');
+    expect(emitSpy).toBeCalledWith('PART #test' + '\r\n');
+  });
 });

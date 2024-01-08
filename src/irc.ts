@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
-/* eslint-disable @typescript-eslint/restrict-plus-operands */
-import { connect as NetConnect } from 'net';
-import { connect as TlsConnect } from 'tls';
+import { connect as NetConnect } from 'node:net';
+import { connect as TlsConnect } from 'node:tls';
 
 import charsetDetector from 'chardet';
 import debug from 'debug';
@@ -65,11 +63,9 @@ export type ChannelData = {
 
 type OnMessage = (nick: string, to: string, text: string, message: Message) => void;
 // TODO: figure out how to pass channel names as generic
-type Messages<T = string[]> = {
-  [K in T as `message#${string & K}`]: OnMessage;
-};
+type Messages = Record<`message#${string}`, OnMessage>;
 
-type IrcClientEvents<T = string[]> = Messages<T> & {
+interface IrcClientEvents extends Messages {
   raw: (message: Message) => void;
   /** Emitted when a user is kicked from a channel. */
   kick: (channel: string, nick: string) => void;
@@ -183,7 +179,7 @@ type IrcClientEvents<T = string[]> = Messages<T> & {
   'ctcp-privmsg': (from: string, to: string, text: string, message: Message) => void;
   /** Emitted when a CTCP VERSION request is received. */
   'ctcp-version': (from: string, to: string, message: Message) => void;
-};
+}
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
@@ -345,6 +341,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     });
 
     this.send('JOIN', channel);
+  }
+
+  part(channel: string) {
+    this.send('PART', channel);
   }
 
   say(target: string, text: string) {
