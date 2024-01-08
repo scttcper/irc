@@ -38,3 +38,4 @@ build
 docs
 dist
 yarn.lock
+examples
