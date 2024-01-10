@@ -723,6 +723,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       case 'rpl_youreoper':
         this.emit('opered');
         break;
+      case 'ERROR':
+        this.emit('error', message);
+        break;
       default:
         if (message.commandType === 'error') {
           this.debug(message);
