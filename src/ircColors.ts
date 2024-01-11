@@ -9,12 +9,12 @@ const COLORS = {
   '07': ['olive'],
   '08': ['yellow'],
   '09': ['lightgreen', 'lime'],
-  '10': ['teal', 'bluecyan'],
-  '11': ['cyan', 'aqua'],
-  '12': ['blue', 'royal'],
-  '13': ['pink', 'lightpurple', 'fuchsia'],
-  '14': ['gray', 'grey'],
-  '15': ['lightgray', 'lightgrey', 'silver'],
+  10: ['teal', 'bluecyan'],
+  11: ['cyan', 'aqua'],
+  12: ['blue', 'royal'],
+  13: ['pink', 'lightpurple', 'fuchsia'],
+  14: ['gray', 'grey'],
+  15: ['lightgray', 'lightgrey', 'silver'],
 };
 
 const styles = {
