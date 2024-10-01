@@ -3,12 +3,12 @@ import { expect, it } from 'vitest';
 import { wrap } from '../src/colors.js';
 
 it('does nothing if invalid color given', () => {
-  // @ts-expect-error
+  // @ts-expect-error errors because of invalid color
   expect(wrap('unknown', 'test')).toBe('test');
 });
 
 it('wraps in color without resetColor given', () => {
-  // @ts-expect-error
+  // @ts-expect-error errors because of invalid color
   expect(wrap('white', 'test')).toBe('\u000300test\u000f');
 });
 
@@ -17,6 +17,6 @@ it('wraps in color with resetColor given', () => {
 });
 
 it('wraps in color even with invalid resetColor given', () => {
-  // @ts-expect-error
+  // @ts-expect-error errors because of invalid color
   expect(wrap('white', 'test', 'invalid')).toBe('\u000300test\u000f');
 });

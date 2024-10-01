@@ -434,9 +434,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     channel: string,
     ...args: string[] | [string] | [Users]
   ) {
-    // @ts-expect-error
+    // @ts-expect-error ignore rough type spread
     this.emit(eventName, channel, ...args);
-    // @ts-expect-error
+    // @ts-expect-error ignore rough type spread
     this.emit(eventName + channel, ...args);
   }
 
@@ -941,7 +941,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       let modeArg: string;
       if (mode in this.prefixForMode) {
         modeArg = modeArgs.shift();
-        if (Object.prototype.hasOwnProperty.call(channel.users, modeArg)) {
+        if (Object.hasOwn(channel.users, modeArg)) {
           if (adding) {
             if (!channel.users[modeArg].includes(this.prefixForMode[mode])) {
               channel.users[modeArg] += this.prefixForMode[mode];

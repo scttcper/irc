@@ -100,7 +100,6 @@ export const rainbow = (str: string, colorArr: string[]) => {
   return (
     str
       .split('')
-      // eslint-disable-next-line no-negated-condition
       .map(c => (c !== ' ' ? obj[colorArr[i++ % l]](c) : c))
       .join('')
   );
@@ -111,10 +110,9 @@ export const rainbow = (str: string, colorArr: string[]) => {
 //   obj[extra] = value;
 // });
 
-// eslint-disable-next-line no-control-regex
 export const stripColors = (str: string) => str.replace(/\x03\d{0,2}(,\d{0,2}|\x02\x02)?/g, '');
 export const stripStyle = (str: string) => {
-  const path: Array<[string, number]> = [];
+  const path: [string, number][] = [];
   for (let i = 0, len = str.length; i < len; i++) {
     const char = str[i];
     if (styleChars[char] || char === c) {

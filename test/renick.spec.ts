@@ -17,7 +17,7 @@ it('renick attains suitable fallback', async () => {
     commandType: 'error',
   });
 
-  // @ts-expect-error
+  // @ts-expect-error test
   expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot1\r\n');
   vi.clearAllMocks();
 
@@ -26,7 +26,7 @@ it('renick attains suitable fallback', async () => {
 
   client.handleData(':localhost 433 * testbot1 :Nickname is already in use.\r\n');
 
-  // @ts-expect-error
+  // @ts-expect-error test
   expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot2\r\n');
   vi.clearAllMocks();
 
@@ -43,10 +43,10 @@ it('renick attains suitable fallback', async () => {
     }),
   );
 
-  // @ts-expect-error
+  // @ts-expect-error test
   expect(client.connection.socket.write.mock.calls[0][0]).toBe('NICK testbot3\r\n');
   expect(client.nick).toBe('testbot3');
 
-  // @ts-expect-error
+  // @ts-expect-error test
   client.cancelAutoRenick();
 });

@@ -9,9 +9,9 @@ export function setupMockClient(nick: string, options?: Partial<IrcOptions>): Ir
   const client = new IrcClient('', nick, options);
   client.connection = {
     currentBuffer: Buffer.from(''),
-    // @ts-expect-error
+    // @ts-expect-error mock
     socket: { write: vi.fn() },
-    // @ts-expect-error
+    // @ts-expect-error mock
     cyclingPingTimer: { notifyOfActivity: vi.fn() },
   };
   client.nick = nick;
