@@ -97,12 +97,10 @@ export const rainbow = (str: string, colorArr: string[]) => {
   const l = colorArr.length;
   let i = 0;
 
-  return (
-    str
-      .split('')
-      .map(c => (c !== ' ' ? obj[colorArr[i++ % l]](c) : c))
-      .join('')
-  );
+  return str
+    .split('')
+    .map(c => (c !== ' ' ? obj[colorArr[i++ % l]](c) : c))
+    .join('');
 };
 
 // Object.entries(custom).forEach(([extra, value]) => {
