@@ -37,7 +37,33 @@ describe('handle data', () => {
       client.handleData(chunk);
     }
 
-    expect(emitSpy.mock.calls).toMatchSnapshot();
+    expect(emitSpy).toBeCalledWith(
+      'registered',
+      expect.objectContaining({
+        command: 'rpl_welcome',
+        args: ['testbot', 'Welcome to the xx-Net IRC Network testbot!nodebot@nothing.sanic.net'],
+      }),
+    );
+    expect(emitSpy).toBeCalledWith('ping', 'EAA41EAE');
+    expect(emitSpy).toBeCalledWith(
+      'notice',
+      undefined,
+      '*',
+      '*** Looking up your hostname...',
+      expect.objectContaining({
+        command: 'NOTICE',
+        rawCommand: 'NOTICE',
+      }),
+    );
+    expect(client.supported.channel.types).toBe('#');
+    expect(client.supported.nicklength).toBe(30);
+    expect(client.prefixForMode).toEqual({
+      a: '&',
+      h: '%',
+      o: '@',
+      q: '~',
+      v: '+',
+    });
   });
 
   it('passes strict parse mode through to message parsing', () => {
