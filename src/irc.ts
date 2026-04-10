@@ -31,7 +31,7 @@ const defaultOptions = {
   renickDelay: 60_000,
   secure: false,
   selfSigned: false,
-  rejectUnauthorized: false,
+  rejectUnauthorized: true,
   sasl: false,
   webirc: {
     pass: '',

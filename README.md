@@ -22,6 +22,15 @@ const client = new IrcClient('irc.yourserver.com', 'myNick', {
 client.connect();
 ```
 
+If you are connecting to a server with a self-signed certificate, opt out explicitly:
+
+```ts
+const client = new IrcClient('irc.yourserver.com', 'myNick', {
+  secure: true,
+  rejectUnauthorized: false,
+});
+```
+
 Join a channel
 
 ```ts
