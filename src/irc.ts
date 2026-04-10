@@ -1,189 +1,36 @@
 import { connect as NetConnect } from 'node:net';
 import { connect as TlsConnect } from 'node:tls';
 
-import charsetDetector from 'chardet';
 import debug from 'debug';
-import * as iconv from 'iconv-lite';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 import { concatUint8Arrays, stringToBase64 } from 'uint8array-extras';
 
 import { CyclingPingTimer } from './cyclingPingTimer.js';
+import {
+  convertEncodingHelper,
+  lineDelimiter,
+  truncateUtf8,
+  utf8ByteLength,
+  utf8Decoder,
+  utf8Encoder,
+} from './ircEncoding.js';
+import { applyIsupport } from './ircIsupport.js';
+import { defaultOptions, type IrcOptions } from './ircOptions.js';
+import {
+  type ChannelData,
+  type IrcClientEvents,
+  type SupportedFeatures,
+  type Users,
+  type WhoIsData,
+} from './ircTypes.js';
 import { Message, parseMessage } from './parseMessage.js';
 
 const log = debug('irc');
-const lineDelimiter = /\r\n|\r|\n/;
 const whoisTimeoutMs = 30_000;
-const utf8Encoder = new TextEncoder();
-const utf8Decoder = new TextDecoder();
 
-const defaultOptions = {
-  host: '',
-  nick: '',
-  userName: 'nodebot',
-  realName: 'nodeJS IRC client',
-  password: null as string | null,
-  port: 6697,
-  /** List of channels to join ['#general'] */
-  channels: [] as string[],
-  autoRejoin: false,
-  autoRenick: false,
-  retryCount: null as number | null,
-  retryDelay: 5000,
-  renickCount: null as number | null,
-  renickDelay: 60_000,
-  secure: false,
-  selfSigned: false,
-  rejectUnauthorized: true,
-  sasl: false,
-  webirc: {
-    pass: '',
-    ip: '',
-    host: '',
-  },
-  stripColors: true,
-  channelPrefixes: '&#',
-  messageSplit: 512,
-  encoding: null as string | null,
-  millisecondsOfSilenceBeforePingSent: 15 * 1000,
-  millisecondsBeforePingTimeout: 8 * 1000,
-  enableStrictParse: false,
-};
-
-export type IrcOptions = typeof defaultOptions;
-type WhoIsData = Record<string, string | string[]>;
-type Users = string | Record<string, string>;
-export type ChannelData = {
-  key?: string;
-  serverName?: string;
-  name?: string;
-  users: Record<string, string>;
-  modeParams?: Record<string, any>;
-  mode?: string;
-  topic?: string;
-  topicBy?: string;
-  created?: string;
-};
-
-type OnMessage = (nick: string, to: string, text: string, message: Message) => void;
-// TODO: figure out how to pass channel names as generic
-type Messages = Record<`message#${string}`, OnMessage>;
-
-interface IrcClientEvents extends Messages {
-  raw: (message: Message) => void;
-  /** Emitted when a user is kicked from a channel. */
-  kick: (channel: string, nick: string, by: string, reason: string) => void;
-  /** Emitted when a user parts a channel (including when the client itself parts a channel). */
-  part: (channel: string, nick: string, reason: string) => void;
-  /**
-   * Emitted when a server PINGs the client.
-   * The client will automatically send a PONG request just before this is emitted.
-   */
-  ping: (msg: string) => void;
-  pong: (msg: string) => void;
-  /**
-   * Same as the 'message' event, but only emitted when the message is directed to the client.
-   */
-  pm: (nick: string, text: string, message: Message) => void;
-  /**
-   * Emitted when the client receives an ``/invite`
-   */
-  invite: (channel: string, from: string, message: Message) => void;
-  /**
-   * Emitted when the server sends the initial 001 line, indicating you've connected to the server.
-   */
-  registered: (message: Message) => void;
-  error: (message: Message) => void;
-  motd: (motd: string) => void;
-  whois: (whois: WhoIsData) => void;
-  /**
-   * Emitted when the server sends a list of nicks for a channel (which happens immediately after joining or on request).
-   * The nicks object passed to the callback is keyed by nickname, and has values '', '+', or '@' depending on the level of that nick in the channel.
-   */
-  names: (channel: string, nicks: Users) => void;
-  channellist: (channelList: ChannelData[]) => void;
-  channellist_item: (channel: ChannelData) => void;
-  channellist_start: () => void;
-  connect: () => void;
-  /**
-   * Emitted when a user changes nick, with the channels the user is known to be in.
-   * Channels are emitted case-lowered.
-   */
-  nick: (nick: string, arg: string, channels: string[], message: Message) => void;
-  notice: (from: string | undefined, to: string, text: string, message: Message) => void;
-  opered: () => void;
-  /** Emitted when the socket connection to the server emits an error event. */
-  netError: (exception: string) => void;
-  abort: (retryCount: number) => void;
-  /**
-   * Emitted whenever the server responds with a message the bot doesn't recognize and doesn't handle.
-   * This must not be relied on to emit particular event codes, as the codes the bot does and does not handle can change between minor versions.
-   * It should instead be used as a handler to do something when the bot does not recognize a message, such as warning a user.
-   */
-  unhandled: (message: Message) => void;
-  /**
-   * Emitted when a user joins a channel (including when the client itself joins a channel).
-   */
-  join: (channel: string, nick: string) => void;
-  topic: (channel: string, topic: string, nick: string, message: Message) => void;
-  quit: (who: string, reason: string, channels: string[], message: Message) => void;
-  /**
-   * Emitted when a message is sent.
-   * The ``to`` parameter can be either a nick (which is most likely this client's nick and represents a private message), or a channel (which represents a message to that channel).
-   */
-  message: OnMessage;
-  // Emitted when a message is sent from the client.
-  selfMessage: (to: string, text: string) => void;
-  /** Emitted whenever a user performs an action (e.g. ``/me waves``) */
-  action: (from: string, to: string, text: string, message: Message) => void;
-  /**
-   * Emitted when a user is killed from the IRC server.
-   * The ``channels`` parameter is an array of channels the killed user was in, those known to the client (that is, the ones the bot was present in).
-   * Channels are emitted case-lowered.
-   */
-  kill: (nick: string, reason: string, channels: string[], message: Message) => void;
-  /**
-   * Emitted when a mode is added to a user or channel.
-   * The ``channel`` parameter is the channel which the mode is being set on/in.
-   * The ``by`` parameter is the user setting the mode.
-   * The ``mode`` parameter is the single character mode identifier.
-   * If the mode is being set on a user, ``argument`` is the nick of the user.  If the mode is being set on a channel, ``argument`` is the argument to the mode.
-   * If a channel mode doesn't have any arguments, ``argument`` will be 'undefined'.
-   * See the ``raw`` event for details on the ``message`` object.
-   */
-  '+mode': (
-    channel: string,
-    by: string,
-    mode: string,
-    argument: string | undefined,
-    message: Message,
-  ) => void;
-  /**
-   * Emitted when a mode is removed from a user or channel.
-   * The other arguments are as in the ``+mode`` event.
-   */
-  '-mode': (
-    channel: string,
-    by: string,
-    mode: string,
-    argument: string | undefined,
-    message: Message,
-  ) => void;
-  /** Emitted when a CTCP notice or privmsg was received */
-  ctcp: (
-    from: string,
-    to: string,
-    text: string,
-    type: 'notice' | 'privmsg',
-    message: Message,
-  ) => void;
-  /** Emitted when a CTCP notice is received. */
-  'ctcp-notice': (from: string, to: string, text: string, message: Message) => void;
-  /** Emitted when a CTCP privmsg was received. */
-  'ctcp-privmsg': (from: string, to: string, text: string, message: Message) => void;
-  /** Emitted when a CTCP VERSION request is received. */
-  'ctcp-version': (from: string, to: string, message: Message) => void;
-}
+export type { ChannelData } from './ircTypes.js';
+export type { IrcOptions } from './ircOptions.js';
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
@@ -203,7 +50,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   _whoisData: Record<string, WhoIsData> = {};
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
-  supported = {
+  supported: SupportedFeatures = {
     channel: {
       // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
       idlength: {} as Record<string, number>,
@@ -396,7 +243,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // Reset buffer
     connection.currentBuffer = new Uint8Array();
 
-    for (const line of lines.filter(n => n)) {
+    for (const line of lines.filter(Boolean)) {
       this.debug('Received:', line);
       const message = parseMessage(line, this.opt.stripColors, this.opt.enableStrictParse);
       this.emit('raw', message);
@@ -677,7 +524,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_isupport': {
-        this.handleIsupport(message.args);
+        applyIsupport(message.args, this.supported, this.modeForPrefix, this.prefixForMode);
         break;
       }
       case 'rpl_yourhost':
@@ -951,108 +798,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         }
       }
     });
-  }
-
-  private handleIsupport(args: Message['args']): void {
-    for (const arg of args) {
-      const match = /([A-Z]+)=(.*)/.exec(arg);
-      if (!match) {
-        continue;
-      }
-
-      const param = match[1];
-      const value = match[2];
-      const type = ['a', 'b', 'c', 'd'] as const;
-
-      switch (param) {
-        case 'CHANLIMIT': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.channel.limit[Number(split[0])] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'CHANMODES': {
-          const split = value.split(',');
-          for (let i = 0; i < type.length; i++) {
-            this.supported.channel.modes[type[i]] += split[i];
-          }
-
-          break;
-        }
-
-        case 'CHANTYPES': {
-          this.supported.channel.types = value;
-          break;
-        }
-
-        case 'CHANNELLEN': {
-          this.supported.channel.length = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'IDCHAN': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.channel.idlength[split[0]] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'KICKLEN': {
-          this.supported.kicklength = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'MAXLIST': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.maxlist[Number(split[0])] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'NICKLEN': {
-          this.supported.nicklength = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'PREFIX': {
-          const prefixMatch = /\((.*?)\)(.*)/.exec(value);
-          if (prefixMatch) {
-            const prefixSplit = [];
-            prefixSplit[1] = [...prefixMatch[1]];
-            prefixSplit[2] = [...prefixMatch[2]];
-            while (prefixSplit[1].length > 0) {
-              this.modeForPrefix[prefixSplit[2][0]] = prefixSplit[1][0];
-              this.supported.channel.modes.b += prefixSplit[1][0];
-              this.prefixForMode[prefixSplit[1].shift()] = prefixSplit[2].shift();
-            }
-          }
-
-          break;
-        }
-
-        case 'TARGMAX': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            const numVal = split[1] ? Number.parseInt(split[1], 10) : 0;
-            this.supported.maxtargets[split[0]] = numVal;
-          });
-          break;
-        }
-
-        case 'TOPICLEN': {
-          this.supported.topiclength = Number.parseInt(value, 10);
-          break;
-        }
-
-        default: {
-          break;
-        }
-      }
-    }
   }
 
   private _handleMode(message: Message): void {
@@ -1530,47 +1275,4 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.send('MODE', message.args[1]);
     }
   }
-}
-
-function convertEncodingHelper(
-  str: string | Uint8Array,
-  encoding: string,
-  errorHandler: (e: Error, charset?: string) => void,
-) {
-  let charset: string | null;
-  try {
-    const bytes = typeof str === 'string' ? utf8Encoder.encode(str) : str;
-    charset = charsetDetector.detect(bytes);
-    const decoded = iconv.decode(bytes, charset ?? '');
-    return iconv.decode(iconv.encode(decoded, encoding), encoding);
-  } catch (err) {
-    if (!errorHandler) {
-      throw err;
-    }
-
-    errorHandler(err as Error, charset);
-  }
-
-  return typeof str === 'string' ? str : utf8Decoder.decode(str);
-}
-
-function utf8ByteLength(value: string) {
-  return utf8Encoder.encode(value).length;
-}
-
-function truncateUtf8(value: string, maxBytes: number) {
-  let bytes = 0;
-  let end = 0;
-
-  for (const char of value) {
-    const charBytes = utf8ByteLength(char);
-    if (bytes + charBytes > maxBytes) {
-      break;
-    }
-
-    bytes += charBytes;
-    end += char.length;
-  }
-
-  return value.slice(0, end);
 }

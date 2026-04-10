@@ -1,6 +1,6 @@
 import { TypedEmitter } from 'tiny-typed-emitter';
 
-import { IrcOptions } from './irc.js';
+import type { IrcOptions } from './ircOptions.js';
 
 interface Ping {
   wantPing: () => void;
