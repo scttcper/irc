@@ -352,7 +352,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   notice(target: string, text: string) {
-    this._speak('PRIVMSG', target, text);
+    this._speak('NOTICE', target, text);
   }
 
   handleData = (chunk: string | Buffer) => {
@@ -457,7 +457,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _speak(kind: string, target: string, text: string) {
-    const maxLength = Math.min(this.maxLineLength - target.length, this.opt.messageSplit);
+    const maxLineLength = this.maxLineLength ?? 450;
+    const maxLength = Math.min(maxLineLength - target.length, this.opt.messageSplit);
     if (typeof text === 'undefined') {
       return;
     }

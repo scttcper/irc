@@ -118,4 +118,13 @@ describe('user events', () => {
     client.part('#test');
     expect(emitSpy).toBeCalledWith('PART #test\r\n');
   });
+
+  it('sends notices as NOTICE commands', () => {
+    const client = setupMockClient('testbot');
+    const writeSpy = vi.spyOn(client.connection.socket, 'write');
+
+    client.notice('#test', 'heads up');
+
+    expect(writeSpy).toBeCalledWith('NOTICE #test :heads up\r\n');
+  });
 });
