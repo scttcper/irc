@@ -52,18 +52,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
   supported: SupportedFeatures = {
     channel: {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      idlength: {} as Record<string, number>,
+      idlength: {},
       length: 200,
-      limit: [] as number[],
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      modes: { a: '', b: '', c: '', d: '' } as Record<string, string>,
+      limit: [],
+      modes: { a: '', b: '', c: '', d: '' },
       types: '',
     },
     kicklength: 0,
-    maxlist: [] as number[],
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-    maxtargets: {} as Record<string, number>,
+    maxlist: [],
+    maxtargets: {},
     modes: 3,
     nicklength: 9,
     topiclength: 0,
