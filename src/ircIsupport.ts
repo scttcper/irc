@@ -23,7 +23,10 @@ export function applyIsupport(
       case 'CHANLIMIT': {
         value.split(',').forEach(val => {
           const split = val.split(':');
-          supported.channel.limit[split[0]] = Number.parseInt(split[1], 10);
+          const limit = Number.parseInt(split[1], 10);
+          for (const prefix of split[0]) {
+            supported.channel.limit[prefix] = limit;
+          }
         });
         break;
       }
@@ -50,7 +53,10 @@ export function applyIsupport(
       case 'IDCHAN': {
         value.split(',').forEach(val => {
           const split = val.split(':');
-          supported.channel.idlength[split[0]] = Number.parseInt(split[1], 10);
+          const length = Number.parseInt(split[1], 10);
+          for (const prefix of split[0]) {
+            supported.channel.idlength[prefix] = length;
+          }
         });
         break;
       }
@@ -63,7 +69,10 @@ export function applyIsupport(
       case 'MAXLIST': {
         value.split(',').forEach(val => {
           const split = val.split(':');
-          supported.maxlist[split[0]] = Number.parseInt(split[1], 10);
+          const max = Number.parseInt(split[1], 10);
+          for (const prefix of split[0]) {
+            supported.maxlist[prefix] = max;
+          }
         });
         break;
       }

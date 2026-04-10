@@ -294,8 +294,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     if (!this.connection?.socket) {
-      this.removePendingWhois(normalizedNick);
-      throw new Error('Cannot WHOIS before connecting');
+      this.rejectPendingWhois(new Error('Cannot WHOIS before connecting'));
+      return promise;
     }
 
     const shouldSend = (this.pendingWhois.get(normalizedNick)?.size ?? 0) === 1;
@@ -354,19 +354,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (requests.size === 0) {
       this.pendingWhois.delete(nick);
     }
-  }
-
-  private removePendingWhois(nick: string) {
-    const requests = this.pendingWhois.get(nick);
-    if (!requests) {
-      return;
-    }
-
-    for (const request of requests) {
-      clearTimeout(request.timeout);
-    }
-
-    this.pendingWhois.delete(nick);
   }
 
   private resolvePendingWhois(nick: string, info: { nick?: string; user?: string; host?: string }) {

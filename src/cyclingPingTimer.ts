@@ -53,7 +53,7 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   start() {
     clearTimeout(this.loopingTimeout);
     this.loopingTimeout = setTimeout(() => {
-      this.loopingTimeout = null;
+      this.loopingTimeout = undefined;
       this.emit('wantPing');
     }, this.options.millisecondsOfSilenceBeforePingSent);
   }
