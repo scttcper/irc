@@ -73,7 +73,7 @@ export interface IrcClientEvents extends Messages {
   channellist_item: (channel: ChannelData) => void;
   channellist_start: () => void;
   connect: () => void;
-  nick: (nick: string, arg: string, channels: string[], message: Message) => void;
+  nick: (nick: string, arg: string, channels: readonly string[], message: Message) => void;
   notice: (from: string | undefined, to: string, text: string, message: Message) => void;
   opered: () => void;
   netError: (exception: string) => void;
@@ -81,11 +81,11 @@ export interface IrcClientEvents extends Messages {
   unhandled: (message: Message) => void;
   join: (channel: string, nick: string) => void;
   topic: (channel: string, topic: string, nick: string, message: Message) => void;
-  quit: (who: string, reason: string, channels: string[], message: Message) => void;
+  quit: (who: string, reason: string, channels: readonly string[], message: Message) => void;
   message: OnMessage;
   selfMessage: (to: string, text: string) => void;
   action: (from: string, to: string, text: string, message: Message) => void;
-  kill: (nick: string, reason: string, channels: string[], message: Message) => void;
+  kill: (nick: string, reason: string, channels: readonly string[], message: Message) => void;
   '+mode': (
     channel: string,
     by: string,

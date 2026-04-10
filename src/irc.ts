@@ -33,7 +33,7 @@ export type { ChannelData } from './ircTypes.js';
 export type { IrcOptions } from './ircOptions.js';
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
-  opt: IrcOptions;
+  readonly opt: IrcOptions;
   connection!: {
     pendingChunks: Uint8Array[];
     cyclingPingTimer: CyclingPingTimer;
@@ -81,6 +81,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       timeout: ReturnType<typeof setTimeout>;
     }>
   >();
+  /** Channels joined at runtime, tracked separately from the initial options. */
+  private _autoJoinChannels: string[] = [];
 
   constructor(host: string, nick: string, opt: Partial<IrcOptions> = {}) {
     super();
@@ -94,9 +96,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
     });
     this.addListener('motd', () => {
-      this.opt.channels.forEach(channel => {
+      for (const channel of this.opt.channels) {
         this.join(channel);
-      });
+      }
+
+      for (const channel of this._autoJoinChannels) {
+        this.join(channel);
+      }
     });
   }
 
@@ -106,22 +112,26 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       pendingChunks: [],
       cyclingPingTimer: new CyclingPingTimer(this.opt),
     };
-    const connectFn: any = this.opt.secure ? TlsConnect : NetConnect;
-    connection.socket = connectFn(
-      this.opt.port,
-      this.opt.host,
-      {
-        rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
-      },
-      () => {
-        // Callback called only after successful socket connection
-        if (!this.opt.encoding) {
-          this.connection.socket.setEncoding('utf-8');
-        }
+    const onConnect = () => {
+      // Callback called only after successful socket connection
+      if (!this.opt.encoding) {
+        this.connection.socket.setEncoding('utf-8');
+      }
 
-        this._connectionHandler();
-      },
-    );
+      this._connectionHandler();
+    };
+    if (this.opt.secure) {
+      connection.socket = TlsConnect({
+        port: this.opt.port,
+        host: this.opt.host,
+        rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
+      }, onConnect);
+    } else {
+      connection.socket = NetConnect({
+        port: this.opt.port,
+        host: this.opt.host,
+      }, onConnect);
+    }
 
     connection.socket.addListener('data', chunk => this.handleDataForConnection(connection, chunk));
     connection.socket.addListener('end', () => {
@@ -190,13 +200,18 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   join(channel: string) {
-    this.once(`join${channel.toLowerCase()}` as any, () => {
-      // Append to opts.channel on successful join, so it rejoins on reconnect.
-      const channelIndex = this._findChannelFromStrings(channel);
-      if (channelIndex === -1) {
-        this.opt.channels.push(channel);
+    const onJoin = (joinedChannel: string) => {
+      if (joinedChannel.toLowerCase() !== channel.toLowerCase()) {
+        return;
       }
-    });
+
+      this.removeListener('join', onJoin);
+      // Track for auto-rejoin on reconnect.
+      if (!this._isChannelTracked(channel)) {
+        this._autoJoinChannels.push(channel);
+      }
+    };
+    this.addListener('join', onJoin);
 
     this.send('JOIN', channel);
   }
@@ -943,16 +958,16 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     return this[type === 'privmsg' ? 'say' : 'notice'](to, `\u0001${text}\u0001`);
   }
 
-  // finds the string in opt.channels representing channelName (if present)
-  private _findChannelFromStrings(channelName: string) {
-    channelName = channelName.toLowerCase();
-    const index = this.opt.channels.findIndex(listString => {
-      let name = listString.split(' ')[0]; // ignore the key in the string
-      name = name.toLowerCase(); // check case-insensitively
-      return channelName === name;
+  private _isChannelTracked(channelName: string): boolean {
+    const lower = channelName.toLowerCase();
+    const inOpt = this.opt.channels.some(entry => {
+      return entry.split(' ')[0].toLowerCase() === lower;
     });
+    if (inOpt) {
+      return true;
+    }
 
-    return index;
+    return this._autoJoinChannels.some(name => name.toLowerCase() === lower);
   }
 
   private _handleNicknameinuse(message: Message): void {
@@ -1118,7 +1133,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handleList(message: Message): void {
     const channel = {
       name: message.args[1],
-      users: message.args[2] as any as Record<string, string>,
+      users: message.args[2] as unknown as Record<string, string>,
       topic: message.args[3],
     };
     this.emit('channellist_item', channel);
@@ -1129,7 +1144,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const nick = message.args[0];
     const channels: string[] = [];
     Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (nick in (chan.users as any)) {
+      if (nick in chan.users) {
         channels.push(channame);
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete chan.users[nick];
@@ -1149,7 +1164,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit(`message#${to.toLowerCase()}` as any, from, to, text, message);
+      this.emit(`message#${to.toLowerCase()}` as `message#${string}`, from, to, text, message);
     }
 
     if (to.toUpperCase() === this.nick.toUpperCase()) {
@@ -1170,7 +1185,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     // Figure out what channels the user was in
     Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (message.nick in (chan.users as any)) {
+      if (message.nick in chan.users) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete chan.users[message.nick];
         channels.push(channame);

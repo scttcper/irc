@@ -21,7 +21,7 @@ export interface IrcOptions {
   /** TCP port used for the IRC connection. */
   port: number;
   /** Channels to join automatically after the server MOTD completes. */
-  channels: string[];
+  channels: readonly string[];
   /** Rejoin a channel automatically after the client itself is kicked. */
   autoRejoin: boolean;
   /** Try to reclaim the original nickname after falling back due to nick collisions. */
