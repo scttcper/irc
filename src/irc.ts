@@ -121,16 +121,22 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this._connectionHandler();
     };
     if (this.opt.secure) {
-      connection.socket = TlsConnect({
-        port: this.opt.port,
-        host: this.opt.host,
-        rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
-      }, onConnect);
+      connection.socket = TlsConnect(
+        {
+          port: this.opt.port,
+          host: this.opt.host,
+          rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
+        },
+        onConnect,
+      );
     } else {
-      connection.socket = NetConnect({
-        port: this.opt.port,
-        host: this.opt.host,
-      }, onConnect);
+      connection.socket = NetConnect(
+        {
+          port: this.opt.port,
+          host: this.opt.host,
+        },
+        onConnect,
+      );
     }
 
     connection.socket.addListener('data', chunk => this.handleDataForConnection(connection, chunk));
