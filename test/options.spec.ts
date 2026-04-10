@@ -7,3 +7,14 @@ it('verifies certificates by default when secure mode is enabled', () => {
 
   expect(client.opt.rejectUnauthorized).toBe(true);
 });
+
+it('lets selfSigned opt out of certificate verification explicitly', () => {
+  const client = new IrcClient('irc.example.com', 'testbot', {
+    secure: true,
+    rejectUnauthorized: true,
+    selfSigned: true,
+  });
+
+  expect(client.opt.selfSigned).toBe(true);
+  expect(client.opt.rejectUnauthorized).toBe(true);
+});

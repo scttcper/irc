@@ -264,7 +264,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.opt.port,
       this.opt.host,
       {
-        rejectUnauthorized: this.opt.rejectUnauthorized,
+        rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
       },
       () => {
         // Callback called only after successful socket connection
