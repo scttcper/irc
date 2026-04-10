@@ -69,9 +69,9 @@ type Messages = Record<`message#${string}`, OnMessage>;
 interface IrcClientEvents extends Messages {
   raw: (message: Message) => void;
   /** Emitted when a user is kicked from a channel. */
-  kick: (channel: string, nick: string) => void;
+  kick: (channel: string, nick: string, by: string, reason: string) => void;
   /** Emitted when a user parts a channel (including when the client itself parts a channel). */
-  part: (channel: string, nick: string, reason: string, message: string) => void;
+  part: (channel: string, nick: string, reason: string) => void;
   /**
    * Emitted when a server PINGs the client.
    * The client will automatically send a PONG request just before this is emitted.
@@ -121,7 +121,7 @@ interface IrcClientEvents extends Messages {
   /**
    * Emitted when a user joins a channel (including when the client itself joins a channel).
    */
-  join: (channel: string, nick: string, message: string) => void;
+  join: (channel: string, nick: string) => void;
   topic: (channel: string, topic: string, nick: string, message: Message) => void;
   quit: (who: string, reason: string, channels: string[], message: Message) => void;
   /**
