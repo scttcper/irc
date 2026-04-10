@@ -27,7 +27,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile=./junit.xml"
+    "test:ci": "vitest run"
   },
   "dependencies": {
     "chardet": "^2.1.1",
@@ -43,10 +43,8 @@
     "@types/debug": "4.1.13",
     "@types/lodash.defaultsdeep": "4.6.9",
     "@types/node": "25.5.2",
-    "@vitest/coverage-v8": "4.1.4",
     "oxfmt": "0.44.0",
     "oxlint": "1.59.0",
-    "ts-node": "^10.9.2",
     "typescript": "6.0.2",
     "vitest": "4.1.4"
   },
@@ -56,6 +54,6 @@
     ]
   },
   "engines": {
-    "node": ">=16"
+    "node": ">=22"
   }
 }
