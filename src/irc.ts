@@ -1,190 +1,41 @@
 import { connect as NetConnect } from 'node:net';
 import { connect as TlsConnect } from 'node:tls';
 
-import charsetDetector from 'chardet';
 import debug from 'debug';
-import * as iconv from 'iconv-lite';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
+import { concatUint8Arrays, stringToBase64 } from 'uint8array-extras';
 
 import { CyclingPingTimer } from './cyclingPingTimer.js';
+import {
+  convertEncodingHelper,
+  lineDelimiter,
+  truncateUtf8,
+  utf8ByteLength,
+  utf8Decoder,
+  utf8Encoder,
+} from './ircEncoding.js';
+import { applyIsupport } from './ircIsupport.js';
+import { defaultOptions, type IrcOptions } from './ircOptions.js';
+import {
+  type ChannelData,
+  type IrcClientEvents,
+  type SupportedFeatures,
+  type Users,
+  type WhoIsData,
+} from './ircTypes.js';
 import { Message, parseMessage } from './parseMessage.js';
 
 const log = debug('irc');
-const lineDelimiter = /\r\n|\r|\n/;
+const whoisTimeoutMs = 30_000;
 
-const defaultOptions = {
-  host: '',
-  nick: '',
-  userName: 'nodebot',
-  realName: 'nodeJS IRC client',
-  password: null as string | null,
-  port: 6697,
-  /** List of channels to join ['#general'] */
-  channels: [] as string[],
-  autoRejoin: false,
-  autoRenick: false,
-  retryCount: null as number | null,
-  retryDelay: 5000,
-  renickCount: null as number | null,
-  renickDelay: 60_000,
-  secure: false,
-  selfSigned: false,
-  rejectUnauthorized: false,
-  sasl: false,
-  webirc: {
-    pass: '',
-    ip: '',
-    host: '',
-  },
-  stripColors: true,
-  channelPrefixes: '&#',
-  messageSplit: 512,
-  encoding: null as string | null,
-  millisecondsOfSilenceBeforePingSent: 15 * 1000,
-  millisecondsBeforePingTimeout: 8 * 1000,
-  enableStrictParse: false,
-};
-
-export type IrcOptions = typeof defaultOptions;
-type WhoIsData = Record<string, string | string[]>;
-type Users = string | Record<string, string>;
-export type ChannelData = {
-  key?: string;
-  serverName?: string;
-  name?: string;
-  users: Record<string, string>;
-  modeParams?: Record<string, any>;
-  mode?: string;
-  topic?: string;
-  topicBy?: string;
-  created?: string;
-};
-
-type OnMessage = (nick: string, to: string, text: string, message: Message) => void;
-// TODO: figure out how to pass channel names as generic
-type Messages = Record<`message#${string}`, OnMessage>;
-
-interface IrcClientEvents extends Messages {
-  raw: (message: Message) => void;
-  /** Emitted when a user is kicked from a channel. */
-  kick: (channel: string, nick: string) => void;
-  /** Emitted when a user parts a channel (including when the client itself parts a channel). */
-  part: (channel: string, nick: string, reason: string, message: string) => void;
-  /**
-   * Emitted when a server PINGs the client.
-   * The client will automatically send a PONG request just before this is emitted.
-   */
-  ping: (msg: string) => void;
-  pong: (msg: string) => void;
-  /**
-   * Same as the 'message' event, but only emitted when the message is directed to the client.
-   */
-  pm: (nick: string, text: string, message: Message) => void;
-  /**
-   * Emitted when the client receives an ``/invite`
-   */
-  invite: (channel: string, from: string, message: Message) => void;
-  /**
-   * Emitted when the server sends the initial 001 line, indicating you've connected to the server.
-   */
-  registered: (message: Message) => void;
-  error: (message: Message) => void;
-  motd: (motd: string) => void;
-  whois: (whois: WhoIsData) => void;
-  /**
-   * Emitted when the server sends a list of nicks for a channel (which happens immediately after joining or on request).
-   * The nicks object passed to the callback is keyed by nickname, and has values '', '+', or '@' depending on the level of that nick in the channel.
-   */
-  names: (channel: string, nicks: Users) => void;
-  channellist: (channelList: ChannelData[]) => void;
-  channellist_item: (channel: ChannelData) => void;
-  channellist_start: () => void;
-  connect: () => void;
-  /**
-   * Emitted when a user changes nick, with the channels the user is known to be in.
-   * Channels are emitted case-lowered.
-   */
-  nick: (nick: string, arg: string, channels: string[], message: Message) => void;
-  notice: (from: string | undefined, to: string, text: string, message: Message) => void;
-  opered: () => void;
-  /** Emitted when the socket connection to the server emits an error event. */
-  netError: (exception: string) => void;
-  abort: (retryCount: number) => void;
-  /**
-   * Emitted whenever the server responds with a message the bot doesn't recognize and doesn't handle.
-   * This must not be relied on to emit particular event codes, as the codes the bot does and does not handle can change between minor versions.
-   * It should instead be used as a handler to do something when the bot does not recognize a message, such as warning a user.
-   */
-  unhandled: (message: Message) => void;
-  /**
-   * Emitted when a user joins a channel (including when the client itself joins a channel).
-   */
-  join: (channel: string, nick: string, message: string) => void;
-  topic: (channel: string, topic: string, nick: string, message: Message) => void;
-  quit: (who: string, reason: string, channels: string[], message: Message) => void;
-  /**
-   * Emitted when a message is sent.
-   * The ``to`` parameter can be either a nick (which is most likely this client's nick and represents a private message), or a channel (which represents a message to that channel).
-   */
-  message: OnMessage;
-  // Emitted when a message is sent from the client.
-  selfMessage: (to: string, text: string) => void;
-  /** Emitted whenever a user performs an action (e.g. ``/me waves``) */
-  action: (from: string, to: string, text: string, message: Message) => void;
-  /**
-   * Emitted when a user is killed from the IRC server.
-   * The ``channels`` parameter is an array of channels the killed user was in, those known to the client (that is, the ones the bot was present in).
-   * Channels are emitted case-lowered.
-   */
-  kill: (nick: string, reason: string, channels: string[], message: Message) => void;
-  /**
-   * Emitted when a mode is added to a user or channel.
-   * The ``channel`` parameter is the channel which the mode is being set on/in.
-   * The ``by`` parameter is the user setting the mode.
-   * The ``mode`` parameter is the single character mode identifier.
-   * If the mode is being set on a user, ``argument`` is the nick of the user.  If the mode is being set on a channel, ``argument`` is the argument to the mode.
-   * If a channel mode doesn't have any arguments, ``argument`` will be 'undefined'.
-   * See the ``raw`` event for details on the ``message`` object.
-   */
-  '+mode': (
-    channel: string,
-    by: string,
-    mode: string,
-    argument: string | undefined,
-    message: Message,
-  ) => void;
-  /**
-   * Emitted when a mode is removed from a user or channel.
-   * The other arguments are as in the ``+mode`` event.
-   */
-  '-mode': (
-    channel: string,
-    by: string,
-    mode: string,
-    argument: string | undefined,
-    message: Message,
-  ) => void;
-  /** Emitted when a CTCP notice or privmsg was received */
-  ctcp: (
-    from: string,
-    to: string,
-    text: string,
-    type: 'notice' | 'privmsg',
-    message: Message,
-  ) => void;
-  /** Emitted when a CTCP notice is received. */
-  'ctcp-notice': (from: string, to: string, text: string, message: Message) => void;
-  /** Emitted when a CTCP privmsg was received. */
-  'ctcp-privmsg': (from: string, to: string, text: string, message: Message) => void;
-  /** Emitted when a CTCP VERSION request is received. */
-  'ctcp-version': (from: string, to: string, message: Message) => void;
-}
+export type { ChannelData } from './ircTypes.js';
+export type { IrcOptions } from './ircOptions.js';
 
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
   connection!: {
-    currentBuffer: Buffer;
+    pendingChunks: Uint8Array[];
     cyclingPingTimer: CyclingPingTimer;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     renickInterval?: ReturnType<typeof setInterval>;
@@ -199,20 +50,17 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   _whoisData: Record<string, WhoIsData> = {};
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
-  supported = {
+  supported: SupportedFeatures = {
     channel: {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      idlength: {} as Record<string, number>,
+      idlength: {},
       length: 200,
-      limit: [] as number[],
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      modes: { a: '', b: '', c: '', d: '' } as Record<string, string>,
+      limit: {},
+      modes: { a: '', b: '', c: '', d: '' },
       types: '',
     },
     kicklength: 0,
-    maxlist: [] as number[],
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-    maxtargets: {} as Record<string, number>,
+    maxlist: {},
+    maxtargets: {},
     modes: 3,
     nicklength: 9,
     topiclength: 0,
@@ -225,6 +73,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   chans: Record<string, ChannelData> = {};
   channellist: ChannelData[] = [];
   retryTimeout?: ReturnType<typeof setTimeout>;
+  private pendingWhois = new Map<
+    string,
+    Set<{
+      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
+      reject: (error: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }>
+  >();
 
   constructor(host: string, nick: string, opt: Partial<IrcOptions> = {}) {
     super();
@@ -245,8 +101,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   connect(retryCount = 0) {
+    this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
-      currentBuffer: Buffer.from(''),
+      pendingChunks: [],
       cyclingPingTimer: new CyclingPingTimer(this.opt),
     };
     const connectFn: any = this.opt.secure ? TlsConnect : NetConnect;
@@ -254,7 +111,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.opt.port,
       this.opt.host,
       {
-        rejectUnauthorized: this.opt.rejectUnauthorized,
+        rejectUnauthorized: this.opt.selfSigned ? false : this.opt.rejectUnauthorized,
       },
       () => {
         // Callback called only after successful socket connection
@@ -266,7 +123,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       },
     );
 
-    connection.socket.addListener('data', chunk => this.handleData(chunk));
+    connection.socket.addListener('data', chunk => this.handleDataForConnection(connection, chunk));
     connection.socket.addListener('end', () => {
       this.debug('Connection got "end" event');
     });
@@ -284,6 +141,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
 
       this.debug('Disconnected: reconnecting');
+      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
       connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       // connection = null;
@@ -307,7 +165,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         return;
       }
 
-      this.end();
+      this.disconnectForReconnect();
     });
 
     let pingCounter = 1;
@@ -352,24 +210,28 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   notice(target: string, text: string) {
-    this._speak('PRIVMSG', target, text);
+    this._speak('NOTICE', target, text);
   }
 
-  handleData = (chunk: string | Buffer) => {
-    this.connection.cyclingPingTimer.notifyOfActivity();
+  handleData = (chunk: string | Uint8Array) => {
+    this.handleDataForConnection(this.connection, chunk);
+  };
 
-    if (typeof chunk === 'string') {
-      this.connection.currentBuffer = Buffer.concat([
-        this.connection.currentBuffer,
-        Buffer.from(chunk),
-      ]);
-    } else {
-      this.connection.currentBuffer = Buffer.concat([this.connection.currentBuffer, chunk]);
+  private handleDataForConnection = (
+    connection: IrcClient['connection'],
+    chunk: string | Uint8Array,
+  ) => {
+    if (!connection || connection !== this.connection) {
+      return;
     }
 
-    const lines = this.convertEncoding(this.connection.currentBuffer)
-      .toString()
-      .split(lineDelimiter);
+    this.connection.cyclingPingTimer.notifyOfActivity();
+
+    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
+    connection.pendingChunks.push(chunkBytes);
+
+    const merged = concatUint8Arrays(connection.pendingChunks);
+    const lines = this.convertEncoding(merged).split(lineDelimiter);
 
     if (lines.pop()) {
       // if buffer doesn't end \r\n, there are more chunks.
@@ -377,11 +239,11 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // Reset buffer
-    this.connection.currentBuffer = Buffer.from('');
+    connection.pendingChunks = [];
 
-    for (const line of lines.filter(n => n)) {
+    for (const line of lines.filter(Boolean)) {
       this.debug('Received:', line);
-      const message = parseMessage(line, this.opt.stripColors);
+      const message = parseMessage(line, this.opt.stripColors, this.opt.enableStrictParse);
       this.emit('raw', message);
     }
   };
@@ -398,6 +260,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       args[args.length - 1] = `:${args[args.length - 1]}`;
     }
 
+    if (!this.connection?.socket) {
+      throw new Error('Cannot send before connecting');
+    }
+
     if (this.connection.requestedDisconnect) {
       this.debug('(Disconnected) SEND:', args.join(' '));
     } else {
@@ -408,24 +274,111 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   /** Request a whois for the specified ``nick``. */
   async whois(nick: string): Promise<{ nick?: string; user?: string; host?: string }> {
-    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(resolve => {
-      this.addListener('whois', info => {
-        if ((info.nick as string)?.toLowerCase() === nick.toLowerCase()) {
-          resolve(info);
-        }
-      });
-    });
+    const normalizedNick = nick.toLowerCase();
+    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(
+      (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.removePendingWhoisRequest(normalizedNick, request);
+          reject(new Error(`WHOIS timed out for ${nick}`));
+        }, whoisTimeoutMs);
 
-    this.send('WHOIS', nick);
+        const request = { resolve, reject, timeout };
+        const requests = this.pendingWhois.get(normalizedNick) ?? new Set();
+        requests.add(request);
+        this.pendingWhois.set(normalizedNick, requests);
+      },
+    );
+
+    if (this.connection?.requestedDisconnect) {
+      this.rejectPendingWhois(new Error('Cannot WHOIS while disconnected'));
+      return promise;
+    }
+
+    if (!this.connection?.socket) {
+      this.rejectPendingWhois(new Error('Cannot WHOIS before connecting'));
+      return promise;
+    }
+
+    const shouldSend = (this.pendingWhois.get(normalizedNick)?.size ?? 0) === 1;
+    if (shouldSend) {
+      this.send('WHOIS', nick);
+    }
+
     return promise;
   }
 
   end() {
-    if (this.connection.socket) {
+    if (this.connection?.socket) {
       this.connection.requestedDisconnect = true;
+      this.clearRetryTimeout();
+      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
       this.connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       this.connection.socket.destroy();
+    }
+  }
+
+  private disconnectForReconnect() {
+    if (!this.connection.socket) {
+      return;
+    }
+
+    this.clearRetryTimeout();
+    this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
+    this.connection.cyclingPingTimer.stop();
+    this.cancelAutoRenick();
+    this.connection.socket.destroy();
+  }
+
+  private clearRetryTimeout() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = undefined;
+    }
+  }
+
+  private removePendingWhoisRequest(
+    nick: string,
+    request: {
+      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
+      reject: (error: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    },
+  ) {
+    clearTimeout(request.timeout);
+    const requests = this.pendingWhois.get(nick);
+    if (!requests) {
+      return;
+    }
+
+    requests.delete(request);
+    if (requests.size === 0) {
+      this.pendingWhois.delete(nick);
+    }
+  }
+
+  private resolvePendingWhois(nick: string, info: { nick?: string; user?: string; host?: string }) {
+    const requests = this.pendingWhois.get(nick.toLowerCase());
+    if (!requests) {
+      return;
+    }
+
+    for (const request of requests) {
+      clearTimeout(request.timeout);
+      request.resolve(info);
+    }
+
+    this.pendingWhois.delete(nick.toLowerCase());
+  }
+
+  private rejectPendingWhois(error: Error) {
+    for (const [nick, requests] of this.pendingWhois.entries()) {
+      for (const request of requests) {
+        clearTimeout(request.timeout);
+        request.reject(error);
+      }
+
+      this.pendingWhois.delete(nick);
     }
   }
 
@@ -446,18 +399,19 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  private convertEncoding(str: string | Buffer) {
+  private convertEncoding(str: string | Uint8Array) {
     if (this.opt.encoding) {
       return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
         this.debug(err, { str, charset });
       });
     }
 
-    return str;
+    return typeof str === 'string' ? str : utf8Decoder.decode(str);
   }
 
   private _speak(kind: string, target: string, text: string) {
-    const maxLength = Math.min(this.maxLineLength - target.length, this.opt.messageSplit);
+    const maxLineLength = this.maxLineLength ?? 450;
+    const maxLength = Math.min(maxLineLength - target.length, this.opt.messageSplit);
     if (typeof text === 'undefined') {
       return;
     }
@@ -487,15 +441,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // If the remaining words fit under the byte limit (by utf-8, for Unicode support), push to the accumulator and return
-    if (Buffer.byteLength(words, 'utf8') <= maxLength) {
+    if (utf8ByteLength(words) <= maxLength) {
       destination.push(words);
       return destination;
     }
 
-    // else, attempt to write maxLength bytes of message, truncate accordingly
-    const truncatingBuffer = Buffer.alloc(maxLength + 1);
-    const writtenLength = truncatingBuffer.write(words, 'utf8');
-    const truncatedStr = truncatingBuffer.toString('utf8', 0, writtenLength);
+    // else, truncate by utf-8 bytes while preserving full code points
+    const truncatedStr = truncateUtf8(words, maxLength);
     // and then check for a word boundary to try to keep words together
     const len = truncatedStr.length - 1;
     let c = truncatedStr[len];
@@ -561,7 +513,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_isupport': {
-        this.handleIsupport(message.args);
+        applyIsupport(message.args, this.supported, this.modeForPrefix, this.prefixForMode);
         break;
       }
       case 'rpl_yourhost':
@@ -610,12 +562,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_motd': {
-        this.motd += `${message.args[1]}\n`;
+        this.motd = `${this.motd ?? ''}${message.args[1]}\n`;
         break;
       }
       case 'rpl_endofmotd':
       case 'err_nomotd': {
-        this.motd += `${message.args[1]}\n`;
+        this.motd = `${this.motd ?? ''}${message.args[1]}\n`;
         this.emit('motd', this.motd);
         break;
       }
@@ -666,16 +618,21 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_endofwhois': {
-        this.emit('whois', this._clearWhoisData(message.args[1]));
+        const whoisData = this._clearWhoisData(message.args[1]);
+        this.resolvePendingWhois(message.args[1], whoisData);
+        this.emit('whois', whoisData);
         break;
       }
       case 'rpl_whoreply': {
         this._addWhoisData(message.args[5], 'user', message.args[2]);
         this._addWhoisData(message.args[5], 'host', message.args[3]);
         this._addWhoisData(message.args[5], 'server', message.args[4]);
-        this._addWhoisData(message.args[5], 'realname', /[0-9]+\s*(.+)/g.exec(message.args[7])[1]);
+        const realnameMatch = /[0-9]+\s*(.+)/g.exec(message.args[7]);
+        this._addWhoisData(message.args[5], 'realname', realnameMatch?.[1] ?? message.args[7]);
         // emit right away because rpl_endofwho doesn't contain nick
-        this.emit('whois', this._clearWhoisData(message.args[5]));
+        const whoisData = this._clearWhoisData(message.args[5]);
+        this.resolvePendingWhois(message.args[5], whoisData);
+        this.emit('whois', whoisData);
         break;
       }
       case 'rpl_liststart': {
@@ -831,108 +788,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         }
       }
     });
-  }
-
-  private handleIsupport(args: Message['args']): void {
-    for (const arg of args) {
-      const match = /([A-Z]+)=(.*)/.exec(arg);
-      if (!match) {
-        continue;
-      }
-
-      const param = match[1];
-      const value = match[2];
-      const type = ['a', 'b', 'c', 'd'] as const;
-
-      switch (param) {
-        case 'CHANLIMIT': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.channel.limit[Number(split[0])] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'CHANMODES': {
-          const split = value.split(',');
-          for (let i = 0; i < type.length; i++) {
-            this.supported.channel.modes[type[i]] += split[i];
-          }
-
-          break;
-        }
-
-        case 'CHANTYPES': {
-          this.supported.channel.types = value;
-          break;
-        }
-
-        case 'CHANNELLEN': {
-          this.supported.channel.length = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'IDCHAN': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.channel.idlength[split[0]] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'KICKLEN': {
-          this.supported.kicklength = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'MAXLIST': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            this.supported.maxlist[Number(split[0])] = Number.parseInt(split[1], 10);
-          });
-          break;
-        }
-
-        case 'NICKLEN': {
-          this.supported.nicklength = Number.parseInt(value, 10);
-          break;
-        }
-
-        case 'PREFIX': {
-          const prefixMatch = /\((.*?)\)(.*)/.exec(value);
-          if (prefixMatch) {
-            const prefixSplit = [];
-            prefixSplit[1] = [...prefixMatch[1]];
-            prefixSplit[2] = [...prefixMatch[2]];
-            while (prefixSplit[1].length > 0) {
-              this.modeForPrefix[prefixSplit[2][0]] = prefixSplit[1][0];
-              this.supported.channel.modes.b += prefixSplit[1][0];
-              this.prefixForMode[prefixSplit[1].shift()] = prefixSplit[2].shift();
-            }
-          }
-
-          break;
-        }
-
-        case 'TARGMAX': {
-          value.split(',').forEach(val => {
-            const split = val.split(':');
-            const numVal = split[1] ? Number.parseInt(split[1], 10) : 0;
-            this.supported.maxtargets[split[0]] = numVal;
-          });
-          break;
-        }
-
-        case 'TOPICLEN': {
-          this.supported.topiclength = Number.parseInt(value, 10);
-          break;
-        }
-
-        default: {
-          break;
-        }
-      }
-    }
   }
 
   private _handleMode(message: Message): void {
@@ -1212,9 +1067,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // AUTHENTICATE response (params) must be split into 400-byte chunks
-    const authMessage = Buffer.from(
+    const authMessage = stringToBase64(
       `${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`,
-    ).toString('base64');
+    );
     // must output a "+" after a 400-byte string to make clear it's finished
     for (let i = 0; i < (authMessage.length + 1) / 400; i++) {
       let chunk = authMessage.slice(i * 400, (i + 1) * 400);
@@ -1409,25 +1264,5 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.emitChannelEvent('names', message.args[1], channel.users);
       this.send('MODE', message.args[1]);
     }
-  }
-}
-
-function convertEncodingHelper(
-  str: string | Buffer,
-  encoding: string,
-  errorHandler: (e: Error, charset?: string) => void,
-) {
-  let charset: string | null;
-  try {
-    const buff = Buffer.from(str);
-    charset = charsetDetector.detect(buff);
-    const decoded = iconv.decode(buff, charset ?? '');
-    return Buffer.from(iconv.encode(decoded, encoding));
-  } catch (err) {
-    if (!errorHandler) {
-      throw err;
-    }
-
-    errorHandler(err as Error, charset);
   }
 }

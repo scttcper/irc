@@ -1,6 +1,6 @@
 import { TypedEmitter } from 'tiny-typed-emitter';
 
-import { IrcOptions } from './irc.js';
+import type { IrcOptions } from './ircOptions.js';
 
 interface Ping {
   wantPing: () => void;
@@ -53,7 +53,7 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   start() {
     clearTimeout(this.loopingTimeout);
     this.loopingTimeout = setTimeout(() => {
-      this.loopingTimeout = null;
+      this.loopingTimeout = undefined;
       this.emit('wantPing');
     }, this.options.millisecondsOfSilenceBeforePingSent);
   }

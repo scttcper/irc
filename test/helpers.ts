@@ -8,11 +8,11 @@ import { IrcClient, IrcOptions } from '../src/irc.js';
 export function setupMockClient(nick: string, options?: Partial<IrcOptions>): IrcClient {
   const client = new IrcClient('', nick, options);
   client.connection = {
-    currentBuffer: Buffer.from(''),
+    pendingChunks: [],
     // @ts-expect-error mock
-    socket: { write: vi.fn() },
+    socket: { write: vi.fn(), destroy: vi.fn() },
     // @ts-expect-error mock
-    cyclingPingTimer: { notifyOfActivity: vi.fn() },
+    cyclingPingTimer: { notifyOfActivity: vi.fn(), stop: vi.fn() },
   };
   client.nick = nick;
 

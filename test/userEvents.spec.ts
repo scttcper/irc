@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { IrcClient } from '../src/irc.js';
+
 import { setupMockClient } from './helpers.js';
 
 describe('user events', () => {
@@ -117,5 +119,23 @@ describe('user events', () => {
 
     client.part('#test');
     expect(emitSpy).toBeCalledWith('PART #test\r\n');
+  });
+
+  it('throws a clear error when sending before connect', () => {
+    const client = new IrcClient('', 'testbot');
+
+    expect(() => client.say('#test', 'hello')).toThrow('Cannot send before connecting');
+    expect(() => client.join('#test')).toThrow('Cannot send before connecting');
+    expect(() => client.notice('#test', 'hello')).toThrow('Cannot send before connecting');
+    expect(() => client.end()).not.toThrow();
+  });
+
+  it('sends notices as NOTICE commands', () => {
+    const client = setupMockClient('testbot');
+    const writeSpy = vi.spyOn(client.connection.socket, 'write');
+
+    client.notice('#test', 'heads up');
+
+    expect(writeSpy).toBeCalledWith('NOTICE #test :heads up\r\n');
   });
 });

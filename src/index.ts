@@ -1,1 +1,3 @@
-export { IrcClient, type ChannelData, type IrcOptions } from './irc.js';
+export { IrcClient } from './irc.js';
+export type { ChannelData } from './ircTypes.js';
+export type { IrcOptions } from './ircOptions.js';
