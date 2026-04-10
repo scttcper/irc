@@ -19,12 +19,12 @@ export type SupportedFeatures = {
   channel: {
     idlength: Record<string, number>;
     length: number;
-    limit: number[];
+    limit: Record<string, number>;
     modes: Record<string, string>;
     types: string;
   };
   kicklength: number;
-  maxlist: number[];
+  maxlist: Record<string, number>;
   maxtargets: Record<string, number>;
   modes: number;
   nicklength: number;

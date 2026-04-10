@@ -23,7 +23,7 @@ export function applyIsupport(
       case 'CHANLIMIT': {
         value.split(',').forEach(val => {
           const split = val.split(':');
-          supported.channel.limit[Number(split[0])] = Number.parseInt(split[1], 10);
+          supported.channel.limit[split[0]] = Number.parseInt(split[1], 10);
         });
         break;
       }
@@ -63,7 +63,7 @@ export function applyIsupport(
       case 'MAXLIST': {
         value.split(',').forEach(val => {
           const split = val.split(':');
-          supported.maxlist[Number(split[0])] = Number.parseInt(split[1], 10);
+          supported.maxlist[split[0]] = Number.parseInt(split[1], 10);
         });
         break;
       }

@@ -54,12 +54,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     channel: {
       idlength: {},
       length: 200,
-      limit: [],
+      limit: {},
       modes: { a: '', b: '', c: '', d: '' },
       types: '',
     },
     kicklength: 0,
-    maxlist: [],
+    maxlist: {},
     maxtargets: {},
     modes: 3,
     nicklength: 9,
@@ -259,6 +259,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       args[args.length - 1] = `:${args[args.length - 1]}`;
     }
 
+    if (!this.connection?.socket) {
+      throw new Error('Cannot send before connecting');
+    }
+
     if (this.connection.requestedDisconnect) {
       this.debug('(Disconnected) SEND:', args.join(' '));
     } else {
@@ -303,7 +307,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   end() {
-    if (this.connection.socket) {
+    if (this.connection?.socket) {
       this.connection.requestedDisconnect = true;
       this.clearRetryTimeout();
       this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
@@ -570,12 +574,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_motd': {
-        this.motd += `${message.args[1]}\n`;
+        this.motd = `${this.motd ?? ''}${message.args[1]}\n`;
         break;
       }
       case 'rpl_endofmotd':
       case 'err_nomotd': {
-        this.motd += `${message.args[1]}\n`;
+        this.motd = `${this.motd ?? ''}${message.args[1]}\n`;
         this.emit('motd', this.motd);
         break;
       }
@@ -635,7 +639,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this._addWhoisData(message.args[5], 'user', message.args[2]);
         this._addWhoisData(message.args[5], 'host', message.args[3]);
         this._addWhoisData(message.args[5], 'server', message.args[4]);
-        this._addWhoisData(message.args[5], 'realname', /[0-9]+\s*(.+)/g.exec(message.args[7])[1]);
+        const realnameMatch = /[0-9]+\s*(.+)/g.exec(message.args[7]);
+        this._addWhoisData(message.args[5], 'realname', realnameMatch?.[1] ?? message.args[7]);
         // emit right away because rpl_endofwho doesn't contain nick
         const whoisData = this._clearWhoisData(message.args[5]);
         this.resolvePendingWhois(message.args[5], whoisData);

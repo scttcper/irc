@@ -57,6 +57,8 @@ describe('handle data', () => {
     );
     expect(client.supported.channel.types).toBe('#');
     expect(client.supported.nicklength).toBe(30);
+    expect(client.supported.channel.limit).toEqual({ '#': 30 });
+    expect(client.supported.maxlist).toEqual({ I: 60, b: 60, e: 60 });
     expect(client.prefixForMode).toEqual({
       a: '&',
       h: '%',
@@ -97,5 +99,15 @@ describe('handle data', () => {
       'raw',
       expect.objectContaining({ command: 'PING', args: ['ignored'] }),
     );
+  });
+
+  it('does not prefix nomotd with undefined', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+
+    client.handleData(':localhost 422 testbot :MOTD File is missing\r\n');
+
+    expect(client.motd).toBe('MOTD File is missing\n');
+    expect(emitSpy).toBeCalledWith('motd', 'MOTD File is missing\n');
   });
 });

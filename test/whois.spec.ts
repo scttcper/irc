@@ -45,4 +45,21 @@ describe('whois', () => {
     // @ts-expect-error test
     expect(client.connection.socket.destroy).toBeCalled();
   });
+
+  it('handles who replies that do not include a hopcount prefix in the realname field', async () => {
+    const client = setupMockClient('testbot');
+    const promise = client.whois('friend');
+
+    client.handleData(':localhost 352 testbot #test user host server friend H :Friend User\r\n');
+
+    await expect(promise).resolves.toEqual(
+      expect.objectContaining({
+        nick: 'friend',
+        realname: 'Friend User',
+        server: 'server',
+        user: 'user',
+        host: 'host',
+      }),
+    );
+  });
 });
