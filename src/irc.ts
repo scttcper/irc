@@ -6,6 +6,7 @@ import debug from 'debug';
 import * as iconv from 'iconv-lite';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
+import { concatUint8Arrays, stringToBase64 } from 'uint8array-extras';
 
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { Message, parseMessage } from './parseMessage.js';
@@ -383,7 +384,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.connection.cyclingPingTimer.notifyOfActivity();
 
     const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    connection.currentBuffer = concatBytes(connection.currentBuffer, chunkBytes);
+    connection.currentBuffer = concatUint8Arrays([connection.currentBuffer, chunkBytes]);
 
     const lines = this.convertEncoding(connection.currentBuffer).split(lineDelimiter);
 
@@ -1331,8 +1332,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // AUTHENTICATE response (params) must be split into 400-byte chunks
-    const authMessage = encodeBase64(
-      utf8Encoder.encode(`${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`),
+    const authMessage = stringToBase64(
+      `${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`,
     );
     // must output a "+" after a 400-byte string to make clear it's finished
     for (let i = 0; i < (authMessage.length + 1) / 400; i++) {
@@ -1553,13 +1554,6 @@ function convertEncodingHelper(
   return typeof str === 'string' ? str : utf8Decoder.decode(str);
 }
 
-function concatBytes(a: Uint8Array, b: Uint8Array) {
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a);
-  out.set(b, a.length);
-  return out;
-}
-
 function utf8ByteLength(value: string) {
   return utf8Encoder.encode(value).length;
 }
@@ -1579,23 +1573,4 @@ function truncateUtf8(value: string, maxBytes: number) {
   }
 
   return value.slice(0, end);
-}
-
-function encodeBase64(bytes: Uint8Array) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let out = '';
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i] ?? 0;
-    const b = bytes[i + 1] ?? 0;
-    const c = bytes[i + 2] ?? 0;
-    const triple = a * 65_536 + b * 256 + c;
-
-    out += alphabet[Math.floor(triple / 262_144) % 64];
-    out += alphabet[Math.floor(triple / 4096) % 64];
-    out += i + 1 < bytes.length ? alphabet[Math.floor(triple / 64) % 64] : '=';
-    out += i + 2 < bytes.length ? alphabet[triple % 64] : '=';
-  }
-
-  return out;
 }

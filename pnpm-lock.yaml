@@ -23,6 +23,9 @@ importers:
       tiny-typed-emitter:
         specifier: ^2.1.0
         version: 2.1.0
+      uint8array-extras:
+        specifier: ^1.5.0
+        version: 1.5.0
     devDependencies:
       '@ctrl/oxlint-config':
         specifier: 1.5.0
@@ -849,6 +852,10 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  uint8array-extras@1.5.0:
+    resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
+    engines: {node: '>=18'}
+
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
@@ -1547,6 +1554,8 @@ snapshots:
     optional: true
 
   typescript@6.0.2: {}
+
+  uint8array-extras@1.5.0: {}
 
   undici-types@7.18.2: {}
 
