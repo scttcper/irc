@@ -12,6 +12,7 @@ import { Message, parseMessage } from './parseMessage.js';
 
 const log = debug('irc');
 const lineDelimiter = /\r\n|\r|\n/;
+const whoisTimeoutMs = 30_000;
 
 const defaultOptions = {
   host: '',
@@ -225,6 +226,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   chans: Record<string, ChannelData> = {};
   channellist: ChannelData[] = [];
   retryTimeout?: ReturnType<typeof setTimeout>;
+  private pendingWhois = new Map<
+    string,
+    Set<{
+      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
+      reject: (error: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    }>
+  >();
 
   constructor(host: string, nick: string, opt: Partial<IrcOptions> = {}) {
     super();
@@ -245,6 +254,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   connect(retryCount = 0) {
+    this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
       currentBuffer: Buffer.from(''),
       cyclingPingTimer: new CyclingPingTimer(this.opt),
@@ -284,6 +294,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
 
       this.debug('Disconnected: reconnecting');
+      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
       connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       // connection = null;
@@ -307,7 +318,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         return;
       }
 
-      this.end();
+      this.disconnectForReconnect();
     });
 
     let pingCounter = 1;
@@ -408,24 +419,124 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   /** Request a whois for the specified ``nick``. */
   async whois(nick: string): Promise<{ nick?: string; user?: string; host?: string }> {
-    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(resolve => {
-      this.addListener('whois', info => {
-        if ((info.nick as string)?.toLowerCase() === nick.toLowerCase()) {
-          resolve(info);
-        }
-      });
-    });
+    const normalizedNick = nick.toLowerCase();
+    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(
+      (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.removePendingWhoisRequest(normalizedNick, request);
+          reject(new Error(`WHOIS timed out for ${nick}`));
+        }, whoisTimeoutMs);
 
-    this.send('WHOIS', nick);
+        const request = { resolve, reject, timeout };
+        const requests = this.pendingWhois.get(normalizedNick) ?? new Set();
+        requests.add(request);
+        this.pendingWhois.set(normalizedNick, requests);
+      },
+    );
+
+    if (this.connection?.requestedDisconnect) {
+      this.rejectPendingWhois(new Error('Cannot WHOIS while disconnected'));
+      return promise;
+    }
+
+    if (!this.connection?.socket) {
+      this.removePendingWhois(normalizedNick);
+      throw new Error('Cannot WHOIS before connecting');
+    }
+
+    const shouldSend = (this.pendingWhois.get(normalizedNick)?.size ?? 0) === 1;
+    if (shouldSend) {
+      this.send('WHOIS', nick);
+    }
+
     return promise;
   }
 
   end() {
     if (this.connection.socket) {
       this.connection.requestedDisconnect = true;
+      this.clearRetryTimeout();
+      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
       this.connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       this.connection.socket.destroy();
+    }
+  }
+
+  private disconnectForReconnect() {
+    if (!this.connection.socket) {
+      return;
+    }
+
+    this.clearRetryTimeout();
+    this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
+    this.connection.cyclingPingTimer.stop();
+    this.cancelAutoRenick();
+    this.connection.socket.destroy();
+  }
+
+  private clearRetryTimeout() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = undefined;
+    }
+  }
+
+  private removePendingWhoisRequest(
+    nick: string,
+    request: {
+      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
+      reject: (error: Error) => void;
+      timeout: ReturnType<typeof setTimeout>;
+    },
+  ) {
+    clearTimeout(request.timeout);
+    const requests = this.pendingWhois.get(nick);
+    if (!requests) {
+      return;
+    }
+
+    requests.delete(request);
+    if (requests.size === 0) {
+      this.pendingWhois.delete(nick);
+    }
+  }
+
+  private removePendingWhois(nick: string) {
+    const requests = this.pendingWhois.get(nick);
+    if (!requests) {
+      return;
+    }
+
+    for (const request of requests) {
+      clearTimeout(request.timeout);
+    }
+
+    this.pendingWhois.delete(nick);
+  }
+
+  private resolvePendingWhois(nick: string, info: { nick?: string; user?: string; host?: string }) {
+    const requests = this.pendingWhois.get(nick.toLowerCase());
+    if (!requests) {
+      return;
+    }
+
+    for (const request of requests) {
+      clearTimeout(request.timeout);
+      request.resolve(info);
+    }
+
+    this.pendingWhois.delete(nick.toLowerCase());
+  }
+
+  private rejectPendingWhois(error: Error) {
+    for (const [nick, requests] of this.pendingWhois.entries()) {
+      for (const request of requests) {
+        clearTimeout(request.timeout);
+        request.reject(error);
+      }
+
+      this.pendingWhois.delete(nick);
     }
   }
 
@@ -667,7 +778,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_endofwhois': {
-        this.emit('whois', this._clearWhoisData(message.args[1]));
+        const whoisData = this._clearWhoisData(message.args[1]);
+        this.resolvePendingWhois(message.args[1], whoisData);
+        this.emit('whois', whoisData);
         break;
       }
       case 'rpl_whoreply': {
@@ -676,7 +789,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this._addWhoisData(message.args[5], 'server', message.args[4]);
         this._addWhoisData(message.args[5], 'realname', /[0-9]+\s*(.+)/g.exec(message.args[7])[1]);
         // emit right away because rpl_endofwho doesn't contain nick
-        this.emit('whois', this._clearWhoisData(message.args[5]));
+        const whoisData = this._clearWhoisData(message.args[5]);
+        this.resolvePendingWhois(message.args[5], whoisData);
+        this.emit('whois', whoisData);
         break;
       }
       case 'rpl_liststart': {
