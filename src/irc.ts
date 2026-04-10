@@ -13,6 +13,8 @@ import { Message, parseMessage } from './parseMessage.js';
 const log = debug('irc');
 const lineDelimiter = /\r\n|\r|\n/;
 const whoisTimeoutMs = 30_000;
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
 
 const defaultOptions = {
   host: '',
@@ -185,7 +187,7 @@ interface IrcClientEvents extends Messages {
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
   connection!: {
-    currentBuffer: Buffer;
+    currentBuffer: Uint8Array;
     cyclingPingTimer: CyclingPingTimer;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     renickInterval?: ReturnType<typeof setInterval>;
@@ -256,7 +258,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   connect(retryCount = 0) {
     this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
-      currentBuffer: Buffer.from(''),
+      currentBuffer: new Uint8Array(),
       cyclingPingTimer: new CyclingPingTimer(this.opt),
     };
     const connectFn: any = this.opt.secure ? TlsConnect : NetConnect;
@@ -366,21 +368,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this._speak('NOTICE', target, text);
   }
 
-  handleData = (chunk: string | Buffer) => {
+  handleData = (chunk: string | Uint8Array) => {
     this.connection.cyclingPingTimer.notifyOfActivity();
 
-    if (typeof chunk === 'string') {
-      this.connection.currentBuffer = Buffer.concat([
-        this.connection.currentBuffer,
-        Buffer.from(chunk),
-      ]);
-    } else {
-      this.connection.currentBuffer = Buffer.concat([this.connection.currentBuffer, chunk]);
-    }
+    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
+    this.connection.currentBuffer = concatBytes(this.connection.currentBuffer, chunkBytes);
 
-    const lines = this.convertEncoding(this.connection.currentBuffer)
-      .toString()
-      .split(lineDelimiter);
+    const lines = this.convertEncoding(this.connection.currentBuffer).split(lineDelimiter);
 
     if (lines.pop()) {
       // if buffer doesn't end \r\n, there are more chunks.
@@ -388,7 +382,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // Reset buffer
-    this.connection.currentBuffer = Buffer.from('');
+    this.connection.currentBuffer = new Uint8Array();
 
     for (const line of lines.filter(n => n)) {
       this.debug('Received:', line);
@@ -557,14 +551,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  private convertEncoding(str: string | Buffer) {
+  private convertEncoding(str: string | Uint8Array) {
     if (this.opt.encoding) {
       return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
         this.debug(err, { str, charset });
       });
     }
 
-    return str;
+    return typeof str === 'string' ? str : utf8Decoder.decode(str);
   }
 
   private _speak(kind: string, target: string, text: string) {
@@ -599,15 +593,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // If the remaining words fit under the byte limit (by utf-8, for Unicode support), push to the accumulator and return
-    if (Buffer.byteLength(words, 'utf8') <= maxLength) {
+    if (utf8ByteLength(words) <= maxLength) {
       destination.push(words);
       return destination;
     }
 
-    // else, attempt to write maxLength bytes of message, truncate accordingly
-    const truncatingBuffer = Buffer.alloc(maxLength + 1);
-    const writtenLength = truncatingBuffer.write(words, 'utf8');
-    const truncatedStr = truncatingBuffer.toString('utf8', 0, writtenLength);
+    // else, truncate by utf-8 bytes while preserving full code points
+    const truncatedStr = truncateUtf8(words, maxLength);
     // and then check for a word boundary to try to keep words together
     const len = truncatedStr.length - 1;
     let c = truncatedStr[len];
@@ -1328,9 +1320,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // AUTHENTICATE response (params) must be split into 400-byte chunks
-    const authMessage = Buffer.from(
-      `${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`,
-    ).toString('base64');
+    const authMessage = encodeBase64(
+      utf8Encoder.encode(`${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`),
+    );
     // must output a "+" after a 400-byte string to make clear it's finished
     for (let i = 0; i < (authMessage.length + 1) / 400; i++) {
       let chunk = authMessage.slice(i * 400, (i + 1) * 400);
@@ -1529,16 +1521,16 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 }
 
 function convertEncodingHelper(
-  str: string | Buffer,
+  str: string | Uint8Array,
   encoding: string,
   errorHandler: (e: Error, charset?: string) => void,
 ) {
   let charset: string | null;
   try {
-    const buff = Buffer.from(str);
-    charset = charsetDetector.detect(buff);
-    const decoded = iconv.decode(buff, charset ?? '');
-    return Buffer.from(iconv.encode(decoded, encoding));
+    const bytes = typeof str === 'string' ? utf8Encoder.encode(str) : str;
+    charset = charsetDetector.detect(bytes);
+    const decoded = iconv.decode(bytes, charset ?? '');
+    return iconv.decode(iconv.encode(decoded, encoding), encoding);
   } catch (err) {
     if (!errorHandler) {
       throw err;
@@ -1546,4 +1538,53 @@ function convertEncodingHelper(
 
     errorHandler(err as Error, charset);
   }
+
+  return typeof str === 'string' ? str : utf8Decoder.decode(str);
+}
+
+function concatBytes(a: Uint8Array, b: Uint8Array) {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+}
+
+function utf8ByteLength(value: string) {
+  return utf8Encoder.encode(value).length;
+}
+
+function truncateUtf8(value: string, maxBytes: number) {
+  let bytes = 0;
+  let end = 0;
+
+  for (const char of value) {
+    const charBytes = utf8ByteLength(char);
+    if (bytes + charBytes > maxBytes) {
+      break;
+    }
+
+    bytes += charBytes;
+    end += char.length;
+  }
+
+  return value.slice(0, end);
+}
+
+function encodeBase64(bytes: Uint8Array) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] ?? 0;
+    const b = bytes[i + 1] ?? 0;
+    const c = bytes[i + 2] ?? 0;
+    const triple = a * 65_536 + b * 256 + c;
+
+    out += alphabet[Math.floor(triple / 262_144) % 64];
+    out += alphabet[Math.floor(triple / 4096) % 64];
+    out += i + 1 < bytes.length ? alphabet[Math.floor(triple / 64) % 64] : '=';
+    out += i + 2 < bytes.length ? alphabet[triple % 64] : '=';
+  }
+
+  return out;
 }
