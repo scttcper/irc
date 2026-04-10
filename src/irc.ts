@@ -392,7 +392,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     for (const line of lines.filter(n => n)) {
       this.debug('Received:', line);
-      const message = parseMessage(line, this.opt.stripColors);
+      const message = parseMessage(line, this.opt.stripColors, this.opt.enableStrictParse);
       this.emit('raw', message);
     }
   };

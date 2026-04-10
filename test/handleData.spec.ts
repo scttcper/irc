@@ -39,4 +39,20 @@ describe('handle data', () => {
 
     expect(emitSpy.mock.calls).toMatchSnapshot();
   });
+
+  it('passes strict parse mode through to message parsing', () => {
+    const client = setupMockClient('testbot', { enableStrictParse: true });
+    const emitSpy = vi.spyOn(client, 'emit');
+
+    client.handleData(':견본!~examplename@example.host PRIVMSG #channel :test message\r\n');
+
+    expect(emitSpy.mock.calls[0]?.[1]).toEqual({
+      args: ['#channel', 'test message'],
+      command: 'PRIVMSG',
+      commandType: 'normal',
+      prefix: '견본!~examplename@example.host',
+      rawCommand: 'PRIVMSG',
+      server: '견본!~examplename@example.host',
+    });
+  });
 });
