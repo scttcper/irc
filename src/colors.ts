@@ -17,9 +17,9 @@ export const COLORS = {
   light_gray: '\u000315',
 
   bold: '\u0002',
-  underline: '\u001f',
+  underline: '\u001F',
 
-  reset: '\u000f',
+  reset: '\u000F',
 } as const;
 
 type ColorKeys = keyof typeof COLORS;

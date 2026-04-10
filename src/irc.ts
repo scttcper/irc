@@ -27,7 +27,7 @@ const defaultOptions = {
   retryCount: null as number | null,
   retryDelay: 5000,
   renickCount: null as number | null,
-  renickDelay: 60000,
+  renickDelay: 60_000,
   secure: false,
   selfSigned: false,
   rejectUnauthorized: false,
@@ -232,8 +232,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.supported.channel.types = this.opt.channelPrefixes;
 
     this.addListener('raw', message => this._handleRawMessage(message));
-    this.addListener('kick', (channel: string, nick: string) => {
-      if (this.opt.autoRejoin && nick.toLowerCase() === this.nick.toLowerCase()) {
+    this.addListener('kick', (channel: string, n: string) => {
+      if (this.opt.autoRejoin && n.toLowerCase() === this.nick.toLowerCase()) {
         this.join(channel);
       }
     });
@@ -289,13 +289,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       // connection = null;
       // limit to retryCount reconnections
       if (this.opt.retryCount !== null && retryCount >= this.opt.retryCount) {
-        this.debug('Maximum retry count (' + this.opt.retryCount + ') reached. Aborting');
+        this.debug(`Maximum retry count (${this.opt.retryCount}) reached. Aborting`);
         this.emit('abort', this.opt.retryCount);
         return;
       }
 
       // actually reconnect
-      this.debug('Waiting ' + this.opt.retryDelay + 'ms before retrying');
+      this.debug(`Waiting ${this.opt.retryDelay}ms before retrying`);
       this.retryTimeout = setTimeout(() => {
         this.connect(retryCount + 1);
       }, this.opt.retryDelay);
@@ -327,7 +327,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.connection = connection;
   }
 
-  debug(...args: Parameters<typeof console.log>) {
+  debug(...args: Parameters<typeof log>) {
     log(...args);
   }
 
@@ -395,14 +395,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       /^:/.exec(args[args.length - 1]) ||
       args[args.length - 1] === ''
     ) {
-      args[args.length - 1] = ':' + args[args.length - 1];
+      args[args.length - 1] = `:${args[args.length - 1]}`;
     }
 
     if (this.connection.requestedDisconnect) {
       this.debug('(Disconnected) SEND:', args.join(' '));
     } else {
       this.debug('SEND:', args.join(' '));
-      this.connection.socket.write(args.join(' ') + '\r\n');
+      this.connection.socket.write(`${args.join(' ')}\r\n`);
     }
   }
 
@@ -501,13 +501,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     let c = truncatedStr[len];
     let cutPos = len;
     let wsLength = 1;
-    if (/\s/.exec(c)) {
+    if (/\s/.test(c)) {
       cutPos = len;
     } else {
       let offset = 1;
       while (len - offset > 0) {
         c = truncatedStr[len - offset];
-        if (/\s/.exec(c)) {
+        if (/\s/.test(c)) {
           cutPos = len - offset;
           break;
         }
@@ -522,10 +522,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // and push the found region to the accumulator, remove from words, split rest of message
-    const part = truncatedStr.substring(0, cutPos);
+    const part = truncatedStr.slice(0, cutPos);
     destination.push(part);
     return this._splitLongLines(
-      words.substring(cutPos + wsLength, words.length),
+      words.slice(cutPos + wsLength, words.length),
       maxLength,
       destination,
     );
@@ -546,21 +546,24 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.emit('registered', message);
     const res = await this.whois(this.nick);
     this.nick = res.nick ?? '';
-    this.hostMask = res.user + '@' + res.host;
+    this.hostMask = `${res.user}@${res.host}`;
     this._updateMaxLineLength();
   }
 
   private _handleRawMessage(message: Message): void {
     switch (message.command) {
-      case 'rpl_welcome':
+      case 'rpl_welcome': {
         this._handleWelcome(message).catch(err => this.debug(err));
         return;
-      case 'rpl_myinfo':
+      }
+      case 'rpl_myinfo': {
         this.supported.usermodes = message.args[3];
         break;
-      case 'rpl_isupport':
+      }
+      case 'rpl_isupport': {
         this.handleIsupport(message.args);
         break;
+      }
       case 'rpl_yourhost':
       case 'rpl_created':
       case 'rpl_luserclient':
@@ -573,78 +576,100 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       case 'rpl_luserunknown':
       case 'rpl_whoishost':
       case '396':
-      case '042':
+      case '042': {
         // Random welcome stuff, ignoring
         break;
-      case 'err_nicknameinuse':
+      }
+      case 'err_nicknameinuse': {
         this._handleNicknameinuse(message);
         break;
-      case 'PING':
+      }
+      case 'PING': {
         this.send('PONG', message.args[0]);
         this.emit('ping', message.args[0]);
         break;
-      case 'PONG':
+      }
+      case 'PONG': {
         this.emit('pong', message.args[0]);
         break;
-      case 'NOTICE':
+      }
+      case 'NOTICE': {
         this._handleNotice(message);
         break;
-      case 'MODE':
+      }
+      case 'MODE': {
         this._handleMode(message);
         break;
-      case 'NICK':
+      }
+      case 'NICK': {
         this._handleNick(message);
         break;
-      case 'rpl_motdstart':
-        this.motd = message.args[1] + '\n';
+      }
+      case 'rpl_motdstart': {
+        this.motd = `${message.args[1]}\n`;
         break;
-      case 'rpl_motd':
-        this.motd += message.args[1] + '\n';
+      }
+      case 'rpl_motd': {
+        this.motd += `${message.args[1]}\n`;
         break;
+      }
       case 'rpl_endofmotd':
-      case 'err_nomotd':
-        this.motd += message.args[1] + '\n';
+      case 'err_nomotd': {
+        this.motd += `${message.args[1]}\n`;
         this.emit('motd', this.motd);
         break;
-      case 'rpl_namreply':
+      }
+      case 'rpl_namreply': {
         this._handleNam(message);
         break;
-      case 'rpl_endofnames':
+      }
+      case 'rpl_endofnames': {
         this._handleEndofnames(message);
         break;
-      case 'rpl_topic':
+      }
+      case 'rpl_topic': {
         this._handleRplTopic(message);
         break;
-      case 'rpl_away':
+      }
+      case 'rpl_away': {
         this._addWhoisData(message.args[1], 'away', message.args[2], true);
         break;
-      case 'rpl_whoisuser':
+      }
+      case 'rpl_whoisuser': {
         this._addWhoisData(message.args[1], 'user', message.args[2]);
         this._addWhoisData(message.args[1], 'host', message.args[3]);
         this._addWhoisData(message.args[1], 'realname', message.args[5]);
         break;
-      case 'rpl_whoisidle':
+      }
+      case 'rpl_whoisidle': {
         this._addWhoisData(message.args[1], 'idle', message.args[2]);
         break;
-      case 'rpl_whoischannels':
+      }
+      case 'rpl_whoischannels': {
         // TODO - clean this up?
         this._addWhoisData(message.args[1], 'channels', message.args[2].trim().split(/\s+/));
         break;
-      case 'rpl_whoisserver':
+      }
+      case 'rpl_whoisserver': {
         this._addWhoisData(message.args[1], 'server', message.args[2]);
         this._addWhoisData(message.args[1], 'serverinfo', message.args[3]);
         break;
-      case 'rpl_whoisoperator':
+      }
+      case 'rpl_whoisoperator': {
         this._addWhoisData(message.args[1], 'operator', message.args[2]);
         break;
-      case '330': // rpl_whoisaccount?
+      }
+      case '330': {
+        // rpl_whoisaccount?
         this._addWhoisData(message.args[1], 'account', message.args[2]);
         this._addWhoisData(message.args[1], 'accountinfo', message.args[3]);
         break;
-      case 'rpl_endofwhois':
+      }
+      case 'rpl_endofwhois': {
         this.emit('whois', this._clearWhoisData(message.args[1]));
         break;
-      case 'rpl_whoreply':
+      }
+      case 'rpl_whoreply': {
         this._addWhoisData(message.args[5], 'user', message.args[2]);
         this._addWhoisData(message.args[5], 'host', message.args[3]);
         this._addWhoisData(message.args[5], 'server', message.args[4]);
@@ -652,81 +677,105 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         // emit right away because rpl_endofwho doesn't contain nick
         this.emit('whois', this._clearWhoisData(message.args[5]));
         break;
-      case 'rpl_liststart':
+      }
+      case 'rpl_liststart': {
         this.channellist = [];
         this.emit('channellist_start');
         break;
-      case 'rpl_list':
+      }
+      case 'rpl_list': {
         this._handleList(message);
         break;
-      case 'rpl_listend':
+      }
+      case 'rpl_listend': {
         this.emit('channellist', this.channellist);
         break;
-      case 'rpl_topicwhotime':
+      }
+      case 'rpl_topicwhotime': {
         this._handleTopicwhotime(message);
         break;
-      case 'TOPIC':
+      }
+      case 'TOPIC': {
         this._handleTopic(message);
         break;
-      case 'rpl_channelmodeis':
+      }
+      case 'rpl_channelmodeis': {
         this._handleChannelmodeis(message);
         break;
-      case 'rpl_creationtime':
+      }
+      case 'rpl_creationtime': {
         this._handleCreationtime(message);
         break;
-      case 'JOIN':
+      }
+      case 'JOIN': {
         this._handleJoin(message);
         break;
-      case 'PART':
+      }
+      case 'PART': {
         this._handlePart(message);
         break;
-      case 'KICK':
+      }
+      case 'KICK': {
         this._handleKick(message);
         break;
-      case 'KILL':
+      }
+      case 'KILL': {
         this._handleKill(message);
         break;
-      case 'PRIVMSG':
+      }
+      case 'PRIVMSG': {
         this._handlePrivmsg(message);
         break;
-      case 'INVITE':
+      }
+      case 'INVITE': {
         this.emit('invite', message.args[1], message.nick, message);
         break;
-      case 'QUIT':
+      }
+      case 'QUIT': {
         this._handleQuit(message);
         break;
+      }
       // for sasl
-      case 'CAP':
+      case 'CAP': {
         this._handleCap(message);
         break;
-      case 'AUTHENTICATE':
+      }
+      case 'AUTHENTICATE': {
         this._handleAuthenticate(message);
         break;
-      case 'rpl_loggedin':
+      }
+      case 'rpl_loggedin': {
         break;
-      case 'rpl_saslsuccess':
+      }
+      case 'rpl_saslsuccess': {
         this.send('CAP', 'END');
         break;
-      case 'err_umodeunknownflag':
+      }
+      case 'err_umodeunknownflag': {
         this.debug(message);
         this.emit('error', message);
         break;
-      case 'err_erroneusnickname':
+      }
+      case 'err_erroneusnickname': {
         this.debug(message);
         this.emit('error', message);
         break;
+      }
       // Commands relating to OPER
-      case 'err_nooperhost':
+      case 'err_nooperhost': {
         this.debug(message);
         this.emit('error', message);
         break;
-      case 'rpl_youreoper':
+      }
+      case 'rpl_youreoper': {
         this.emit('opered');
         break;
-      case 'ERROR':
+      }
+      case 'ERROR': {
         this.emit('error', message);
         break;
-      default:
+      }
+      default: {
         if (message.commandType === 'error') {
           this.debug(message);
           this.emit('error', message);
@@ -735,6 +784,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           this.emit('unhandled', message);
           break;
         }
+      }
     }
   }
 
@@ -746,7 +796,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this._updateMaxLineLength();
     }
 
-    this.debug('NICK: ' + message.nick + ' changes nick to ' + message.args[0]);
+    this.debug(`NICK: ${message.nick} changes nick to ${message.args[0]}`);
 
     const channels: string[] = [];
 
@@ -798,7 +848,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         case 'CHANLIMIT': {
           value.split(',').forEach(val => {
             const split = val.split(':');
-            this.supported.channel.limit[Number(split[0])] = parseInt(split[1], 10);
+            this.supported.channel.limit[Number(split[0])] = Number.parseInt(split[1], 10);
           });
           break;
         }
@@ -818,33 +868,33 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         }
 
         case 'CHANNELLEN': {
-          this.supported.channel.length = parseInt(value, 10);
+          this.supported.channel.length = Number.parseInt(value, 10);
           break;
         }
 
         case 'IDCHAN': {
           value.split(',').forEach(val => {
             const split = val.split(':');
-            this.supported.channel.idlength[split[0]] = parseInt(split[1], 10);
+            this.supported.channel.idlength[split[0]] = Number.parseInt(split[1], 10);
           });
           break;
         }
 
         case 'KICKLEN': {
-          this.supported.kicklength = parseInt(value, 10);
+          this.supported.kicklength = Number.parseInt(value, 10);
           break;
         }
 
         case 'MAXLIST': {
           value.split(',').forEach(val => {
             const split = val.split(':');
-            this.supported.maxlist[Number(split[0])] = parseInt(split[1], 10);
+            this.supported.maxlist[Number(split[0])] = Number.parseInt(split[1], 10);
           });
           break;
         }
 
         case 'NICKLEN': {
-          this.supported.nicklength = parseInt(value, 10);
+          this.supported.nicklength = Number.parseInt(value, 10);
           break;
         }
 
@@ -852,9 +902,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           const prefixMatch = /\((.*?)\)(.*)/.exec(value);
           if (prefixMatch) {
             const prefixSplit = [];
-            prefixSplit[1] = prefixMatch[1].split('');
-            prefixSplit[2] = prefixMatch[2].split('');
-            while (prefixSplit[1].length) {
+            prefixSplit[1] = [...prefixMatch[1]];
+            prefixSplit[2] = [...prefixMatch[2]];
+            while (prefixSplit[1].length > 0) {
               this.modeForPrefix[prefixSplit[2][0]] = prefixSplit[1][0];
               this.supported.channel.modes.b += prefixSplit[1][0];
               this.prefixForMode[prefixSplit[1].shift()] = prefixSplit[2].shift();
@@ -867,14 +917,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         case 'TARGMAX': {
           value.split(',').forEach(val => {
             const split = val.split(':');
-            const value = split[1] ? parseInt(split[1], 10) : 0;
-            this.supported.maxtargets[split[0]] = value;
+            const numVal = split[1] ? Number.parseInt(split[1], 10) : 0;
+            this.supported.maxtargets[split[0]] = numVal;
           });
           break;
         }
 
         case 'TOPICLEN': {
-          this.supported.topiclength = parseInt(value, 10);
+          this.supported.topiclength = Number.parseInt(value, 10);
           break;
         }
 
@@ -886,14 +936,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleMode(message: Message): void {
-    this.debug('MODE: ' + message.args[0] + ' sets mode: ' + message.args[1]);
+    this.debug(`MODE: ${message.args[0]} sets mode: ${message.args[1]}`);
 
     const channel = this.chanData(message.args[0]);
     if (!channel) {
       return;
     }
 
-    const modeList = message.args[1].split('');
+    const modeList = [...message.args[1]];
     let adding = true;
     const modeArgs = message.args.slice(2);
     const chanModes = (mode: string, param?: string | string[]) => {
@@ -907,7 +957,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           channel.modeParams[mode] = [];
         } else if (isArr) {
           channel.modeParams[mode] = channel.modeParams[mode]
-            ? channel.modeParams[mode].concat(param)
+            ? [...channel.modeParams[mode], ...param]
             : param;
         } else {
           channel.modeParams[mode] = [param];
@@ -1004,9 +1054,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.emit('notice', from, to, text, message);
 
     if (to === this.nick) {
-      this.debug(
-        'GOT NOTICE from ' + (from ? '"' + from + '"' : 'the server') + ': "' + text + '"',
-      );
+      this.debug(`GOT NOTICE from ${from ? `"${from}"` : 'the server'}: "${text}"`);
     }
   }
 
@@ -1037,7 +1085,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private ctcp(to: string, type: 'privmsg' | string, text: string) {
-    return this[type === 'privmsg' ? 'say' : 'notice'](to, '\u0001' + text + '\u0001');
+    return this[type === 'privmsg' ? 'say' : 'notice'](to, `\u0001${text}\u0001`);
   }
 
   // finds the string in opt.channels representing channelName (if present)
@@ -1066,8 +1114,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     this.nickMod++;
-    this.send('NICK', this.opt.nick + this.nickMod);
-    this.nick = this.opt.nick + this.nickMod;
+    this.send('NICK', `${this.opt.nick}${this.nickMod}`);
+    this.nick = `${this.opt.nick}${this.nickMod}`;
     this._updateMaxLineLength();
     if (this.opt.autoRenick) {
       let renickTimes = 0;
@@ -1086,7 +1134,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this.send('NICK', this.opt.nick);
         renickTimes++;
         if (this.opt.renickCount !== null && renickTimes >= this.opt.renickCount) {
-          this.debug('Maximum autorenick retry count (' + this.opt.renickCount + ') reached');
+          this.debug(`Maximum autorenick retry count (${this.opt.renickCount}) reached`);
           this.cancelAutoRenick();
           this.connection.attemptedLastRenick = true;
         }
@@ -1165,7 +1213,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     // AUTHENTICATE response (params) must be split into 400-byte chunks
     const authMessage = Buffer.from(
-      this.opt.nick + '\0' + this.opt.userName + '\0' + this.opt.password,
+      `${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`,
     ).toString('base64');
     // must output a "+" after a 400-byte string to make clear it's finished
     for (let i = 0; i < (authMessage.length + 1) / 400; i++) {
@@ -1246,17 +1294,17 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit(('message#' + to.toLowerCase()) as any, from, to, text, message);
+      this.emit(`message#${to.toLowerCase()}` as any, from, to, text, message);
     }
 
     if (to.toUpperCase() === this.nick.toUpperCase()) {
       this.emit('pm', from, text, message);
-      this.debug('GOT MESSAGE from "' + from + '": "' + text + '"');
+      this.debug(`GOT MESSAGE from "${from}": "${text}"`);
     }
   }
 
   private _handleQuit(message: Message): void {
-    this.debug('QUIT: ' + message.prefix + ' ' + message.args.join(' '));
+    this.debug(`QUIT: ${message.prefix} ${message.args.join(' ')}`);
     if (this.nick === message.nick) {
       // TODO handle?
       return;

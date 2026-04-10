@@ -2,27 +2,27 @@
   "name": "@ctrl/irc",
   "version": "0.0.0-placeholder",
   "description": "Node irc client in TypeScript",
-  "author": "Scott Cooper <scttcper@gmail.com>",
-  "license": "MIT",
-  "repository": "scttcper/irc",
-  "type": "module",
-  "exports": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
-  "files": [
-    "dist/src"
-  ],
-  "sideEffects": false,
   "keywords": [
     "irc",
     "typescript"
   ],
+  "license": "MIT",
+  "author": "Scott Cooper <scttcper@gmail.com>",
+  "repository": "scttcper/irc",
+  "files": [
+    "dist/src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/src/index.d.ts",
+  "exports": "./dist/src/index.js",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
-    "lint": "pnpm run '/^(lint:biome|lint:eslint)$/'",
-    "lint:biome": "biome check .",
-    "lint:eslint": "eslint .",
-    "lint:fix": "pnpm run '/^(lint:biome|lint:eslint):fix$/'",
-    "lint:eslint:fix": "eslint . --fix",
-    "lint:biome:fix": "biome check . --write",
+    "lint": "oxfmt --check && oxlint .",
+    "lint:fix": "oxfmt && oxlint . --fix",
     "prepare": "npm run build",
     "build": "tsc",
     "test": "vitest run",
@@ -30,28 +30,24 @@
     "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile=./junit.xml"
   },
   "dependencies": {
-    "chardet": "^2.0.0",
-    "debug": "^4.3.7",
-    "iconv-lite": "^0.6.3",
+    "chardet": "^2.1.1",
+    "debug": "^4.4.3",
+    "iconv-lite": "^0.7.2",
     "lodash.defaultsdeep": "^4.6.1",
     "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.2",
-    "@ctrl/eslint-config-biome": "^4.2.7",
-    "@sindresorhus/tsconfig": "6.0.0",
-    "@types/debug": "4.1.12",
+    "@ctrl/oxlint-config": "1.5.0",
+    "@sindresorhus/tsconfig": "8.1.0",
+    "@types/debug": "4.1.13",
     "@types/lodash.defaultsdeep": "4.6.9",
-    "@types/node": "22.7.4",
-    "@vitest/coverage-v8": "2.1.1",
-    "eslint": "^9.11.1",
+    "@types/node": "25.5.2",
+    "@vitest/coverage-v8": "4.1.4",
+    "oxfmt": "0.44.0",
+    "oxlint": "1.59.0",
     "ts-node": "^10.9.2",
-    "typescript": "5.6.2",
-    "vitest": "2.1.1"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
   },
   "release": {
     "branches": [

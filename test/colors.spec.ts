@@ -9,7 +9,7 @@ it('does nothing if invalid color given', () => {
 
 it('wraps in color without resetColor given', () => {
   // @ts-expect-error errors because of invalid color
-  expect(wrap('white', 'test')).toBe('\u000300test\u000f');
+  expect(wrap('white', 'test')).toBe('\u000300test\u000F');
 });
 
 it('wraps in color with resetColor given', () => {
@@ -18,5 +18,5 @@ it('wraps in color with resetColor given', () => {
 
 it('wraps in color even with invalid resetColor given', () => {
   // @ts-expect-error errors because of invalid color
-  expect(wrap('white', 'test', 'invalid')).toBe('\u000300test\u000f');
+  expect(wrap('white', 'test', 'invalid')).toBe('\u000300test\u000F');
 });

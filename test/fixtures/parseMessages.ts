@@ -1,4 +1,4 @@
-export const strict: [string, any][] = [
+export const strict: Array<[string, any]> = [
   [
     ':irc.dollyfish.net.nz 372 nodebot :The message of the day was last changed: 2012-6-16 23:57',
     {
@@ -100,7 +100,7 @@ export const strict: [string, any][] = [
     },
   ],
   [
-    ':nick!user@host PRIVMSG #channel :\u000314,01\u001fneither are colors or styles\u001f\u0003',
+    ':nick!user@host PRIVMSG #channel :\u000314,01\u001Fneither are colors or styles\u001F\u0003',
     {
       prefix: 'nick!user@host',
       nick: 'nick',
@@ -114,7 +114,7 @@ export const strict: [string, any][] = [
     },
   ],
   [
-    ':nick!user@host PRIVMSG #channel :\u000314,01\u001fwe can leave styles and colors alone if desired\u001f\u0003',
+    ':nick!user@host PRIVMSG #channel :\u000314,01\u001Fwe can leave styles and colors alone if desired\u001F\u0003',
     {
       prefix: 'nick!user@host',
       nick: 'nick',
@@ -125,7 +125,7 @@ export const strict: [string, any][] = [
       commandType: 'normal',
       args: [
         '#channel',
-        '\u000314,01\u001fwe can leave styles and colors alone if desired\u001f\u0003',
+        '\u000314,01\u001Fwe can leave styles and colors alone if desired\u001F\u0003',
       ],
       stripColors: false,
     },
@@ -158,7 +158,7 @@ export const strict: [string, any][] = [
   ],
 ];
 
-export const nonStrict: [string, any][] = [
+export const nonStrict: Array<[string, any]> = [
   [
     ':견본!~examplename@example.host PRIVMSG #channel :test message',
     {
@@ -200,7 +200,7 @@ export const nonStrict: [string, any][] = [
   ],
 ];
 
-export const noprefix: [string, any][] = [
+export const noprefix: Array<[string, any]> = [
   [
     '477 nodebot #channel :Cannot join channel (+r) - you need to be identified with services',
     {

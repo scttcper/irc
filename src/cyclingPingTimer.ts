@@ -21,15 +21,21 @@ interface Ping {
 export class CyclingPingTimer extends TypedEmitter<Ping> {
   loopingTimeout?: ReturnType<typeof setTimeout>;
   pingWaitTimeout?: ReturnType<typeof setTimeout>;
+  private readonly options: Pick<
+    IrcOptions,
+    'millisecondsBeforePingTimeout' | 'millisecondsOfSilenceBeforePingSent'
+  > &
+    Partial<IrcOptions>;
 
   constructor(
-    private readonly options: Pick<
+    options: Pick<
       IrcOptions,
       'millisecondsBeforePingTimeout' | 'millisecondsOfSilenceBeforePingSent'
     > &
       Partial<IrcOptions>,
   ) {
     super();
+    this.options = options;
 
     this.on('wantPing', () => {
       this.pingWaitTimeout = setTimeout(() => {

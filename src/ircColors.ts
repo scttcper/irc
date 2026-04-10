@@ -18,27 +18,27 @@ const COLORS = {
 };
 
 const styles = {
-  normal: '\x0F',
-  underline: '\x1F',
-  bold: '\x02',
-  italic: '\x1D',
-  inverse: '\x16',
-  strikethrough: '\x1E',
-  monospace: '\x11',
+  normal: '\u000F',
+  underline: '\u001F',
+  bold: '\u0002',
+  italic: '\u001D',
+  inverse: '\u0016',
+  strikethrough: '\u001E',
+  monospace: '\u0011',
 };
 
 const styleChars: Record<string, boolean> = {
-  '\x0F': true,
-  '\x1F': true,
-  '\x02': true,
-  '\x1D': true,
-  '\x16': true,
-  '\x1E': true,
-  '\x11': true,
+  '\u000F': true,
+  '\u001F': true,
+  '\u0002': true,
+  '\u001D': true,
+  '\u0016': true,
+  '\u001E': true,
+  '\u0011': true,
 };
 
 // Coloring character.
-const c = '\x03';
+const c = '\u0003';
 const zero = styles.bold + styles.bold;
 const badStr = /^,\d/;
 const colorCodeStr = new RegExp(`^${c}\\d\\d`);
@@ -57,30 +57,25 @@ Object.entries(COLORS).forEach(([code, values]) => {
   // Foreground.
   // If the string begins with /,\d/,
   // it can undersirably apply a background color.
-  const fg = (str: string) => c + code + (badStr.test(str) ? zero : '') + str + c;
+  const fg = (str: string) => `${c}${code}${badStr.test(str) ? zero : ''}${str}${c}`;
 
   // Background.
   const bg = (str: string) => {
     // If the string begins with a foreground color already applied,
     // use it to save string space.
     if (colorCodeStr.test(str)) {
-      const str2 = str.substring(3);
-      return (
-        str.substring(0, 3) +
-        ',' +
-        code +
-        (str2.startsWith(zero) ? str2.substring(zero.length) : str2)
-      );
+      const str2 = str.slice(3);
+      return `${str.slice(0, 3)},${code}${str2.startsWith(zero) ? str2.slice(zero.length) : str2}`;
     }
 
-    return c + '01,' + code + str + c;
+    return `${c}01,${code}${str}${c}`;
   };
 
   values.forEach(color => {
     // allColors.fg.push(color);
     // allColors.bg.push('bg' + color);
     obj[color] = fg;
-    obj['bg' + color] = bg;
+    obj[`bg${color}`] = bg;
   });
 });
 
@@ -91,16 +86,13 @@ Object.entries(COLORS).forEach(([code, values]) => {
 
 // Some custom helpers.
 
+const bow = ['red', 'olive', 'yellow', 'green', 'blue', 'navy', 'violet'];
 export const rainbow = (str: string, colorArr: string[]) => {
-  const rainbow = ['red', 'olive', 'yellow', 'green', 'blue', 'navy', 'violet'];
-  colorArr = colorArr || rainbow;
+  colorArr ||= bow;
   const l = colorArr.length;
   let i = 0;
 
-  return str
-    .split('')
-    .map(c => (c !== ' ' ? obj[colorArr[i++ % l]](c) : c))
-    .join('');
+  return [...str].map(ch => (ch !== ' ' ? obj[colorArr[i++ % l]](ch) : ch)).join('');
 };
 
 // Object.entries(custom).forEach(([extra, value]) => {
@@ -108,9 +100,11 @@ export const rainbow = (str: string, colorArr: string[]) => {
 //   obj[extra] = value;
 // });
 
-export const stripColors = (str: string) => str.replace(/\x03\d{0,2}(,\d{0,2}|\x02\x02)?/g, '');
+const colorStripPattern = new RegExp(`${c}\\d{0,2}(,\\d{0,2}|${styles.bold}${styles.bold})?`, 'g');
+
+export const stripColors = (str: string) => str.replace(colorStripPattern, '');
 export const stripStyle = (str: string) => {
-  const path: [string, number][] = [];
+  const path: Array<[string, number]> = [];
   for (let i = 0, len = str.length; i < len; i++) {
     const char = str[i];
     if (styleChars[char] || char === c) {

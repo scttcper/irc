@@ -45,7 +45,7 @@ export function parseMessage(
       match = /^([_a-zA-Z0-9~[\]\\`^{}|-]*)(!([^@]+)@(.*))?$/.exec(message.prefix);
     } else {
       match =
-        /^([\u1100-\u11FF\u3040-\u309fF\u30A0-\u30FF\u3130-\u318F\u31F0-\u31FF\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF_a-zA-Z0-9~[\]\\/?`^{}|-]*)(!([^@]+)@(.*))?$/.exec(
+        /^([\u1100-\u11FF\u3040-\u309FF\u30A0-\u30FF\u3130-\u318F\u31F0-\u31FF\uA960-\uA97F\uAC00-\uD7AF\uD7B0-\uD7FF_a-zA-Z0-9~[\]\\/?`^{}|-]*)(!([^@]+)@(.*))?$/.exec(
           message.prefix,
         );
     }
@@ -80,7 +80,7 @@ export function parseMessage(
   // Parse parameters
   if (line.search(/^:|\s+:/) !== -1) {
     match = /(.*?)(?:^:|\s+:)(.*)/.exec(line);
-    middle = match?.[1].trimRight();
+    middle = match?.[1].trimEnd();
     trailing = match?.[2];
   }
 
