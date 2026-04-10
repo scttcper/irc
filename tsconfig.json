@@ -2,7 +2,6 @@
   "extends": "@sindresorhus/tsconfig",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "noImplicitReturns": false,
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false,
@@ -11,6 +10,5 @@
     "esModuleInterop": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "test"]
 }
