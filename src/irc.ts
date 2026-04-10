@@ -221,7 +221,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     connection: IrcClient['connection'],
     chunk: string | Uint8Array,
   ) => {
-    if (connection !== this.connection) {
+    if (!connection || connection !== this.connection) {
       return;
     }
 
