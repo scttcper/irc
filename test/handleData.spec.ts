@@ -55,4 +55,21 @@ describe('handle data', () => {
       server: '견본!~examplename@example.host',
     });
   });
+
+  it('ignores data from stale connections', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+    const staleConnection = {
+      ...client.connection,
+      currentBuffer: new Uint8Array(),
+    };
+
+    // @ts-expect-error testing stale connection handling
+    client.handleDataForConnection(staleConnection, 'PING :ignored\r\n');
+
+    expect(emitSpy).not.toBeCalledWith(
+      'raw',
+      expect.objectContaining({ command: 'PING', args: ['ignored'] }),
+    );
+  });
 });

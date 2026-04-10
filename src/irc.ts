@@ -278,7 +278,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       },
     );
 
-    connection.socket.addListener('data', chunk => this.handleData(chunk));
+    connection.socket.addListener('data', chunk => this.handleDataForConnection(connection, chunk));
     connection.socket.addListener('end', () => {
       this.debug('Connection got "end" event');
     });
@@ -369,12 +369,23 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   handleData = (chunk: string | Uint8Array) => {
+    this.handleDataForConnection(this.connection, chunk);
+  };
+
+  private handleDataForConnection = (
+    connection: IrcClient['connection'],
+    chunk: string | Uint8Array,
+  ) => {
+    if (connection !== this.connection) {
+      return;
+    }
+
     this.connection.cyclingPingTimer.notifyOfActivity();
 
     const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    this.connection.currentBuffer = concatBytes(this.connection.currentBuffer, chunkBytes);
+    connection.currentBuffer = concatBytes(connection.currentBuffer, chunkBytes);
 
-    const lines = this.convertEncoding(this.connection.currentBuffer).split(lineDelimiter);
+    const lines = this.convertEncoding(connection.currentBuffer).split(lineDelimiter);
 
     if (lines.pop()) {
       // if buffer doesn't end \r\n, there are more chunks.
@@ -382,7 +393,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // Reset buffer
-    this.connection.currentBuffer = new Uint8Array();
+    connection.currentBuffer = new Uint8Array();
 
     for (const line of lines.filter(n => n)) {
       this.debug('Received:', line);
