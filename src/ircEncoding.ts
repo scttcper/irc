@@ -27,6 +27,9 @@ function convertEncodingHelper(
   return typeof str === 'string' ? str : utf8Decoder.decode(str);
 }
 
+// Reusable buffer for encodeInto — 4 bytes is the max a single code point needs in UTF-8
+const encodeIntoBuf = new Uint8Array(4);
+
 function utf8ByteLength(value: string) {
   return utf8Encoder.encode(value).length;
 }
@@ -36,12 +39,12 @@ function truncateUtf8(value: string, maxBytes: number) {
   let end = 0;
 
   for (const char of value) {
-    const charBytes = utf8ByteLength(char);
-    if (bytes + charBytes > maxBytes) {
+    const { written } = utf8Encoder.encodeInto(char, encodeIntoBuf);
+    if (bytes + written > maxBytes) {
       break;
     }
 
-    bytes += charBytes;
+    bytes += written;
     end += char.length;
   }
 

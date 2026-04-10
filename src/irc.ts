@@ -35,7 +35,7 @@ export type { IrcOptions } from './ircOptions.js';
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   opt: IrcOptions;
   connection!: {
-    currentBuffer: Uint8Array;
+    pendingChunks: Uint8Array[];
     cyclingPingTimer: CyclingPingTimer;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     renickInterval?: ReturnType<typeof setInterval>;
@@ -103,7 +103,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   connect(retryCount = 0) {
     this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
-      currentBuffer: new Uint8Array(),
+      pendingChunks: [],
       cyclingPingTimer: new CyclingPingTimer(this.opt),
     };
     const connectFn: any = this.opt.secure ? TlsConnect : NetConnect;
@@ -228,9 +228,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.connection.cyclingPingTimer.notifyOfActivity();
 
     const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    connection.currentBuffer = concatUint8Arrays([connection.currentBuffer, chunkBytes]);
+    connection.pendingChunks.push(chunkBytes);
 
-    const lines = this.convertEncoding(connection.currentBuffer).split(lineDelimiter);
+    const merged = concatUint8Arrays(connection.pendingChunks);
+    const lines = this.convertEncoding(merged).split(lineDelimiter);
 
     if (lines.pop()) {
       // if buffer doesn't end \r\n, there are more chunks.
@@ -238,7 +239,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     // Reset buffer
-    connection.currentBuffer = new Uint8Array();
+    connection.pendingChunks = [];
 
     for (const line of lines.filter(Boolean)) {
       this.debug('Received:', line);
