@@ -41,10 +41,10 @@
     "@types/debug": "4.1.13",
     "@types/lodash.defaultsdeep": "4.6.9",
     "@types/node": "25.6.0",
-    "oxfmt": "0.44.0",
-    "oxlint": "1.59.0",
-    "typescript": "6.0.2",
-    "vitest": "4.1.4"
+    "oxfmt": "0.47.0",
+    "oxlint": "1.62.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
   },
   "release": {
     "branches": [
