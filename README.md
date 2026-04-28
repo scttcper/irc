@@ -31,6 +31,15 @@ const client = new IrcClient('irc.yourserver.com', 'myNick', {
 });
 ```
 
+If a server sends non-UTF-8 text, pass an explicit encoding. Encoding names are passed to
+`iconv-lite`; leaving `encoding` unset uses UTF-8.
+
+```ts
+const client = new IrcClient('irc.yourserver.com', 'myNick', {
+  encoding: 'latin1',
+});
+```
+
 Join a channel
 
 ```ts
