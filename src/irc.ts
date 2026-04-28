@@ -1408,12 +1408,27 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       // https://modern.ircdocs.horse/#rplchannelmodeis-324
       const modeArgs = message.args.slice(3);
       for (const mode of message.args[2].replaceAll(/[+-]/g, '')) {
-        const modeArg = modeArgs.shift();
-        if (modeArg) {
-          channel.modeParams[mode] = [modeArg];
+        if (this.channelModeHasSnapshotArg(mode)) {
+          const modeArg = modeArgs.shift();
+          if (modeArg) {
+            channel.modeParams[mode] = [modeArg];
+          }
         }
       }
     }
+  }
+
+  private channelModeHasSnapshotArg(mode: string): boolean {
+    const { a, b, c, d } = this.supported.channel.modes;
+    if (a.includes(mode) || b.includes(mode) || c.includes(mode)) {
+      return true;
+    }
+
+    if (d.includes(mode)) {
+      return false;
+    }
+
+    return mode === 'b' || mode === 'k' || mode === 'l';
   }
 
   private _handleCreationtime(message: Message): void {

@@ -136,3 +136,26 @@ it('should apply MODES and channel mode arguments from ISUPPORT and RPL_CHANNELM
     }),
   );
 });
+
+it('should only consume RPL_CHANNELMODEIS arguments for parameterized modes', () => {
+  const client = setupMockClient('testbot');
+  client.chans['#chan'] = {
+    key: '#chan',
+    mode: '',
+    modeParams: {},
+    serverName: '#chan',
+    users: {},
+  };
+
+  client.handleData(':server 005 testbot CHANMODES=b,k,l,mn :are supported by this server\r\n');
+  client.handleData(':server 324 testbot #chan +mnl 50\r\n');
+
+  expect(client.chans['#chan']).toEqual(
+    expect.objectContaining({
+      mode: '+mnl',
+      modeParams: {
+        l: ['50'],
+      },
+    }),
+  );
+});
