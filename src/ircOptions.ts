@@ -1,3 +1,5 @@
+import { defaultChannelTypes } from './ircIsupport.js';
+
 export interface WebIrcOptions {
   /** Password shared with the IRC gateway for `WEBIRC` authentication. */
   pass: string;
@@ -84,7 +86,7 @@ const defaultOptions: IrcOptions = {
     host: '',
   },
   stripColors: true,
-  channelPrefixes: '&#',
+  channelPrefixes: defaultChannelTypes,
   messageSplit: 512,
   encoding: null,
   millisecondsOfSilenceBeforePingSent: 15 * 1000,

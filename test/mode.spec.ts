@@ -111,3 +111,51 @@ it('should handle adding and subtracting modes from user', () => {
     mode: 'j',
   });
 });
+
+it('should apply MODES and channel mode arguments from ISUPPORT and RPL_CHANNELMODEIS', () => {
+  const client = setupMockClient('testbot');
+  client.chans['#chan'] = {
+    key: '#chan',
+    mode: '',
+    modeParams: {},
+    serverName: '#chan',
+    users: {},
+  };
+
+  client.handleData(':server 005 testbot MODES=12 :are supported by this server\r\n');
+  client.handleData(':server 324 testbot #chan +kl secret 10\r\n');
+
+  expect(client.supported.modes).toBe(12);
+  expect(client.chans['#chan']).toEqual(
+    expect.objectContaining({
+      mode: '+kl',
+      modeParams: {
+        k: ['secret'],
+        l: ['10'],
+      },
+    }),
+  );
+});
+
+it('should only consume RPL_CHANNELMODEIS arguments for parameterized modes', () => {
+  const client = setupMockClient('testbot');
+  client.chans['#chan'] = {
+    key: '#chan',
+    mode: '',
+    modeParams: {},
+    serverName: '#chan',
+    users: {},
+  };
+
+  client.handleData(':server 005 testbot CHANMODES=b,k,l,mn :are supported by this server\r\n');
+  client.handleData(':server 324 testbot #chan +mnl 50\r\n');
+
+  expect(client.chans['#chan']).toEqual(
+    expect.objectContaining({
+      mode: '+mnl',
+      modeParams: {
+        l: ['50'],
+      },
+    }),
+  );
+});

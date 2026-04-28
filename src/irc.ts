@@ -14,7 +14,13 @@ import {
   utf8Decoder,
   utf8Encoder,
 } from './ircEncoding.js';
-import { applyIsupport } from './ircIsupport.js';
+import {
+  applyIsupport,
+  defaultChannelModes,
+  defaultChannelTypes,
+  defaultModeForPrefix,
+  defaultPrefixForMode,
+} from './ircIsupport.js';
 import { defaultOptions, type IrcOptions } from './ircOptions.js';
 import {
   type ChannelData,
@@ -32,6 +38,32 @@ const whoisTimeoutMs = 30_000;
 function isLineTerminated(bytes: Uint8Array): boolean {
   const lastByte = bytes[bytes.length - 1];
   return lastByte === 10 || lastByte === 13;
+}
+
+function containsInvalidLineByte(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0 || code === 10 || code === 13) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function mustBeTrailingParam(value: string): boolean {
+  if (value === '' || value.charCodeAt(0) === 58) {
+    return true;
+  }
+
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 32 || code === 9 || code === 11 || code === 12) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export type { ChannelData } from './ircTypes.js';
@@ -56,13 +88,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   _whoisData: Record<string, WhoIsData> = {};
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
+  // ISUPPORT defaults: https://modern.ircdocs.horse/#feature-advertisement
   supported: SupportedFeatures = {
     channel: {
       idlength: {},
       length: 200,
       limit: {},
-      modes: { a: '', b: '', c: '', d: '' },
-      types: '',
+      modes: { ...defaultChannelModes },
+      types: defaultChannelTypes,
     },
     kicklength: 0,
     maxlist: {},
@@ -74,10 +107,11 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   };
 
   motd?: string;
-  modeForPrefix: Record<string, string> = {};
-  prefixForMode: Record<string, string> = {};
+  modeForPrefix: Record<string, string> = { ...defaultModeForPrefix };
+  prefixForMode: Record<string, string> = { ...defaultPrefixForMode };
   chans: Record<string, ChannelData> = {};
   channellist: ChannelData[] = [];
+  private channellistOpen = false;
   retryTimeout?: ReturnType<typeof setTimeout>;
   private pendingWhois = new Map<
     string,
@@ -267,13 +301,16 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   send(...args: string[]) {
     // e.g. NICK, nickname
+    // IRC messages are single CRLF-delimited lines capped at 512 bytes.
+    // https://modern.ircdocs.horse/#message-format
+    for (const arg of args) {
+      if (containsInvalidLineByte(arg)) {
+        throw new Error('IRC message parameters cannot contain NUL, CR, or LF characters');
+      }
+    }
 
     // if the last arg contains a space, starts with a colon, or is empty, prepend a colon
-    if (
-      /\s/.exec(args[args.length - 1]) ||
-      /^:/.exec(args[args.length - 1]) ||
-      args[args.length - 1] === ''
-    ) {
+    if (mustBeTrailingParam(args[args.length - 1])) {
       args[args.length - 1] = `:${args[args.length - 1]}`;
     }
 
@@ -284,8 +321,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (this.connection.requestedDisconnect) {
       this.debug('(Disconnected) SEND:', args.join(' '));
     } else {
+      const line = `${args.join(' ')}\r\n`;
+      if (utf8ByteLength(line) > 512) {
+        throw new Error('IRC messages cannot exceed 512 bytes including CRLF');
+      }
+
       this.debug('SEND:', args.join(' '));
-      this.connection.socket.write(`${args.join(' ')}\r\n`);
+      this.connection.socket.write(line);
     }
   }
 
@@ -571,6 +613,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const welcomeStringWords = message.args[1].split(/\s+/);
     this.hostMask = welcomeStringWords[welcomeStringWords.length - 1];
     this._updateMaxLineLength();
+    // Clients must answer server PINGs during registration, but only start
+    // client-initiated keepalives after registration completes.
+    // https://modern.ircdocs.horse/#connection-registration
+    this.connection.cyclingPingTimer.start();
     this.emit('registered', message);
     const res = await this.whois(this.nick);
     this.nick = res.nick ?? '';
@@ -618,7 +664,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'PONG': {
-        this.emit('pong', message.args[0]);
+        // PONG is "[<server>] <token>"; the server name is not the opaque token.
+        // https://modern.ircdocs.horse/#pong-message
+        this.emit('pong', message.args.at(-1) ?? '');
         break;
       }
       case 'NOTICE': {
@@ -674,8 +722,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_whoischannels': {
-        // TODO - clean this up?
-        this._addWhoisData(message.args[1], 'channels', message.args[2].trim().split(/\s+/));
+        // RPL_WHOISCHANNELS can be repeated when the list does not fit once.
+        // https://modern.ircdocs.horse/#rplwhoischannels-319
+        const existingChannels = this._whoisData[message.args[1]]?.channels;
+        const channels = Array.isArray(existingChannels) ? existingChannels : [];
+        this._addWhoisData(message.args[1], 'channels', [
+          ...channels,
+          ...message.args[2].trim().split(/\s+/),
+        ]);
         break;
       }
       case 'rpl_whoisserver': {
@@ -713,15 +767,24 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
       case 'rpl_liststart': {
         this.channellist = [];
+        this.channellistOpen = true;
         this.emit('channellist_start');
         break;
       }
       case 'rpl_list': {
+        // RPL_LISTSTART may be skipped, so the first RPL_LIST starts a new list.
+        // https://modern.ircdocs.horse/#rplliststart-321
+        if (!this.channellistOpen) {
+          this.channellist = [];
+          this.channellistOpen = true;
+        }
+
         this._handleList(message);
         break;
       }
       case 'rpl_listend': {
         this.emit('channellist', this.channellist);
+        this.channellistOpen = false;
         break;
       }
       case 'rpl_topicwhotime': {
@@ -782,6 +845,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
       case 'rpl_saslsuccess': {
         this.send('CAP', 'END');
+        break;
+      }
+      case 'err_saslfail':
+      case 'err_sasltoolong':
+      case 'err_saslaborted':
+      case 'err_saslalready': {
+        this.send('CAP', 'END');
+        this.debug(message);
+        this.emit('error', message);
         break;
       }
       case 'err_umodeunknownflag': {
@@ -1110,11 +1182,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       );
     }
 
-    // SASL, server password
+    // CAP negotiation suspends registration until CAP END.
+    // https://modern.ircdocs.horse/#capability-negotiation
     if (this.opt.sasl) {
       // see http://ircv3.net/specs/extensions/sasl-3.1.html
-      this.send('CAP', 'REQ', 'sasl');
-    } else if (this.opt.password) {
+      this.send('CAP', 'LS', '302');
+    }
+
+    if (this.opt.password) {
       this.send('PASS', this.opt.password);
     }
 
@@ -1123,10 +1198,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.send('NICK', this.opt.nick);
     this.nick = this.opt.nick;
     this._updateMaxLineLength();
-    this.send('USER', this.opt.userName, '8', '*', this.opt.realName);
-
-    // watch for ping timeout
-    this.connection.cyclingPingTimer.start();
+    // USER syntax: https://modern.ircdocs.horse/#user-message
+    this.send('USER', this.opt.userName, '0', '*', this.opt.realName);
 
     this.emit('connect');
   }
@@ -1194,7 +1267,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handleList(message: Message): void {
     const channel = {
       name: message.args[1],
-      users: message.args[2] as unknown as Record<string, string>,
+      users: {},
+      userCount: Number.parseInt(message.args[2], 10),
       topic: message.args[3],
     };
     this.emit('channellist_item', channel);
@@ -1261,8 +1335,20 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // client identifier name, cap subcommand, params
     if (message.args[1] === 'NAK') {
       // capabilities not handled, error
+      this.send('CAP', 'END');
       this.debug(message);
       this.emit('error', message);
+      return;
+    }
+
+    if (message.args[1] === 'LS') {
+      const caps = message.args.at(-1)?.split(/\s+/) ?? [];
+      if (this.opt.sasl && caps.includes('sasl')) {
+        this.send('CAP', 'REQ', 'sasl');
+      } else if (message.args[2] !== '*') {
+        this.send('CAP', 'END');
+      }
+
       return;
     }
 
@@ -1317,7 +1403,32 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const channel = this.chanData(message.args[1]);
     if (channel) {
       channel.mode = message.args[2];
+      channel.modeParams = {};
+      // RPL_CHANNELMODEIS includes mode arguments after the modestring.
+      // https://modern.ircdocs.horse/#rplchannelmodeis-324
+      const modeArgs = message.args.slice(3);
+      for (const mode of message.args[2].replaceAll(/[+-]/g, '')) {
+        if (this.channelModeHasSnapshotArg(mode)) {
+          const modeArg = modeArgs.shift();
+          if (modeArg) {
+            channel.modeParams[mode] = [modeArg];
+          }
+        }
+      }
     }
+  }
+
+  private channelModeHasSnapshotArg(mode: string): boolean {
+    const { a, b, c, d } = this.supported.channel.modes;
+    if (a.includes(mode) || b.includes(mode) || c.includes(mode)) {
+      return true;
+    }
+
+    if (d.includes(mode)) {
+      return false;
+    }
+
+    return mode === 'b' || mode === 'k' || mode === 'l';
   }
 
   private _handleCreationtime(message: Message): void {

@@ -62,4 +62,19 @@ describe('whois', () => {
       }),
     );
   });
+
+  it('accumulates multiple whois channel batches', async () => {
+    const client = setupMockClient('testbot');
+    const promise = client.whois('friend');
+
+    client.handleData(':localhost 319 testbot friend :#one #two\r\n');
+    client.handleData(':localhost 319 testbot friend :#three\r\n');
+    client.handleData(':localhost 318 testbot friend :End of /WHOIS list.\r\n');
+
+    await expect(promise).resolves.toEqual(
+      expect.objectContaining({
+        channels: ['#one', '#two', '#three'],
+      }),
+    );
+  });
 });

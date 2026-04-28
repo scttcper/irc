@@ -12,6 +12,8 @@ export type ChannelData = {
   name?: string;
   /** Known users in the channel keyed by nickname with their mode prefix value. */
   users: Record<string, string>;
+  /** Number of visible clients reported by LIST responses. */
+  userCount?: number;
   /** Parameters associated with channel modes that carry arguments. */
   modeParams?: Record<string, any>;
   /** Current raw channel mode string. */
