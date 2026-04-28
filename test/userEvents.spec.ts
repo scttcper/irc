@@ -113,6 +113,26 @@ describe('user events', () => {
     client.handleData(':user5!~user3@example.host QUIT :See ya\r\n');
     expect(emitSpy).toBeCalledWith('quit', 'user5', 'See ya', ['#test2'], expect.anything());
   });
+
+  it('applies default channel membership prefixes before ISUPPORT', () => {
+    const client = setupMockClient('testbot');
+    client.chans['#chan'] = {
+      key: '#chan',
+      mode: '',
+      modeParams: {},
+      serverName: '#chan',
+      users: {},
+    };
+
+    client.handleData(':server 353 testbot = #chan :@oper +voice plain\r\n');
+
+    expect(client.chans['#chan'].users).toEqual({
+      oper: '@',
+      plain: '',
+      voice: '+',
+    });
+  });
+
   it('can leave a channel', () => {
     const client = setupMockClient('testbot');
     const emitSpy = vi.spyOn(client.connection.socket, 'write');
@@ -137,5 +157,24 @@ describe('user events', () => {
     client.notice('#test', 'heads up');
 
     expect(writeSpy).toBeCalledWith('NOTICE #test :heads up\r\n');
+  });
+
+  it('rejects raw line separators in outgoing parameters', () => {
+    const client = setupMockClient('testbot');
+
+    expect(() => client.send('PRIVMSG', '#test', 'hello\r\nOPER bad')).toThrow(
+      'IRC message parameters cannot contain NUL, CR, or LF characters',
+    );
+    expect(() => client.send('PRIVMSG', '#test', 'bad\0value')).toThrow(
+      'IRC message parameters cannot contain NUL, CR, or LF characters',
+    );
+  });
+
+  it('rejects oversized raw IRC messages', () => {
+    const client = setupMockClient('testbot');
+
+    expect(() => client.send('PRIVMSG', '#test', 'x'.repeat(512))).toThrow(
+      'IRC messages cannot exceed 512 bytes including CRLF',
+    );
   });
 });

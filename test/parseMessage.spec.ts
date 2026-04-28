@@ -23,3 +23,50 @@ for (const [message, result] of noprefix) {
     expect(parseMessage(message)).toEqual(result);
   });
 }
+
+it('parses IRCv3 message tags before the source and command', () => {
+  expect(
+    parseMessage('@aaa=bbb;ccc;escaped=hello\\sworld :nick!user@host PRIVMSG #chan :hi'),
+  ).toEqual({
+    args: ['#chan', 'hi'],
+    command: 'PRIVMSG',
+    commandType: 'normal',
+    host: 'host',
+    nick: 'nick',
+    prefix: 'nick!user@host',
+    rawCommand: 'PRIVMSG',
+    tags: {
+      aaa: 'bbb',
+      ccc: true,
+      escaped: 'hello world',
+    },
+    user: 'user',
+  });
+});
+
+it('keeps an empty trailing parameter', () => {
+  expect(parseMessage(':irc.example CAP * LIST :')).toEqual({
+    args: ['*', 'LIST', ''],
+    command: 'CAP',
+    commandType: 'normal',
+    prefix: 'irc.example',
+    rawCommand: 'CAP',
+    server: 'irc.example',
+  });
+});
+
+it('normalizes commands and does not invent parameters for command-only messages', () => {
+  expect(parseMessage('ping :token')).toEqual({
+    args: ['token'],
+    command: 'PING',
+    commandType: 'normal',
+    rawCommand: 'PING',
+  });
+
+  expect(parseMessage('PING')).toEqual({
+    args: [],
+    command: 'PING',
+    commandType: 'normal',
+    rawCommand: 'PING',
+  });
+});

@@ -30,6 +30,26 @@ PING :EAA41EAE
 |chunk|`;
 
 describe('handle data', () => {
+  it('uses modern registration ordering for CAP, PASS, NICK, and USER', () => {
+    const client = setupMockClient('testbot', {
+      password: 'secret',
+      sasl: true,
+      userName: 'user',
+      realName: 'Real User',
+    });
+    const writeSpy = vi.spyOn(client.connection.socket, 'write');
+
+    // @ts-expect-error test private method
+    client._connectionHandler();
+
+    expect(writeSpy.mock.calls.map(call => call[0])).toEqual([
+      'CAP LS 302\r\n',
+      'PASS secret\r\n',
+      'NICK testbot\r\n',
+      'USER user 0 * :Real User\r\n',
+    ]);
+  });
+
   it('should handle initial connection', () => {
     const client = setupMockClient('testbot');
     const emitSpy = vi.spyOn(client, 'emit');
@@ -65,6 +85,69 @@ describe('handle data', () => {
       o: '@',
       q: '~',
       v: '+',
+    });
+  });
+
+  it('starts the client ping timer after registration completes', () => {
+    const client = setupMockClient('testbot');
+
+    client.handleData(':localhost 001 testbot :Welcome testbot!user@host\r\n');
+
+    expect(client.connection.cyclingPingTimer.start).toBeCalled();
+  });
+
+  it('emits the PONG token instead of the server parameter', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+
+    client.handleData(':server PONG server :opaque-token\r\n');
+
+    expect(emitSpy).toBeCalledWith('pong', 'opaque-token');
+  });
+
+  it('ends CAP negotiation when SASL is unavailable, rejected, or fails', () => {
+    const client = setupMockClient('testbot', { sasl: true });
+    const writeSpy = vi.spyOn(client.connection.socket, 'write');
+    client.on('error', () => {});
+
+    client.handleData(':server CAP * LS :multi-prefix\r\n');
+    client.handleData(':server CAP * NAK :sasl\r\n');
+    client.handleData(':server 904 testbot :SASL authentication failed\r\n');
+
+    expect(writeSpy.mock.calls.map(call => call[0])).toEqual([
+      'CAP END\r\n',
+      'CAP END\r\n',
+      'CAP END\r\n',
+    ]);
+  });
+
+  it('keeps LIST data accurate without depending on RPL_LISTSTART', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+
+    client.channellist = [
+      {
+        name: '#old',
+        users: {},
+        userCount: 99,
+      },
+    ];
+    client.handleData(':server 322 testbot #chan 7 :topic text\r\n');
+    client.handleData(':server 323 testbot :End of /LIST\r\n');
+
+    expect(client.channellist).toEqual([
+      {
+        name: '#chan',
+        topic: 'topic text',
+        userCount: 7,
+        users: {},
+      },
+    ]);
+    expect(emitSpy).toBeCalledWith('channellist_item', {
+      name: '#chan',
+      topic: 'topic text',
+      userCount: 7,
+      users: {},
     });
   });
 
@@ -154,5 +237,26 @@ describe('handle data', () => {
 
     expect(client.motd).toBe('MOTD File is missing\n');
     expect(emitSpy).toBeCalledWith('motd', 'MOTD File is missing\n');
+  });
+
+  it('processes complete lines before a later partial line completes', () => {
+    const client = setupMockClient('testbot');
+    const emitSpy = vi.spyOn(client, 'emit');
+
+    client.handleData('PING :a\r\n:server NOTICE');
+
+    expect(emitSpy).toBeCalledWith('ping', 'a');
+
+    client.handleData(' testbot :hello\r\n');
+
+    expect(emitSpy).toBeCalledWith(
+      'notice',
+      'server',
+      'testbot',
+      'hello',
+      expect.objectContaining({
+        command: 'NOTICE',
+      }),
+    );
   });
 });

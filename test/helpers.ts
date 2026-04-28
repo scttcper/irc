@@ -11,7 +11,7 @@ export function setupMockClient(nick: string, options?: Partial<IrcOptions>): Ir
     // @ts-expect-error mock
     socket: { write: vi.fn(), destroy: vi.fn() },
     // @ts-expect-error mock
-    cyclingPingTimer: { notifyOfActivity: vi.fn(), stop: vi.fn() },
+    cyclingPingTimer: { notifyOfActivity: vi.fn(), start: vi.fn(), stop: vi.fn() },
   };
   client.nick = nick;
 
