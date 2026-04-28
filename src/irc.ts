@@ -4,7 +4,6 @@ import { connect as TlsConnect } from 'node:tls';
 import debug from 'debug';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
-import { concatUint8Arrays, stringToBase64 } from 'uint8array-extras';
 
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import {
@@ -25,9 +24,15 @@ import {
   type WhoIsData,
 } from './ircTypes.js';
 import { Message, parseMessage } from './parseMessage.js';
+import { concatUint8Arrays, stringToBase64 } from './uint8array.js';
 
 const log = debug('irc');
 const whoisTimeoutMs = 30_000;
+
+function isLineTerminated(bytes: Uint8Array): boolean {
+  const lastByte = bytes[bytes.length - 1];
+  return lastByte === 10 || lastByte === 13;
+}
 
 export type { ChannelData } from './ircTypes.js';
 export type { IrcOptions } from './ircOptions.js';
@@ -35,7 +40,8 @@ export type { IrcOptions } from './ircOptions.js';
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   readonly opt: IrcOptions;
   connection!: {
-    pendingChunks: Uint8Array[];
+    pendingBytes?: Uint8Array;
+    pendingText?: string;
     cyclingPingTimer: CyclingPingTimer;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     renickInterval?: ReturnType<typeof setInterval>;
@@ -109,7 +115,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   connect(retryCount = 0) {
     this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
-      pendingChunks: [],
       cyclingPingTimer: new CyclingPingTimer(this.opt),
     };
     const onConnect = () => {
@@ -248,21 +253,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.connection.cyclingPingTimer.notifyOfActivity();
 
-    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    connection.pendingChunks.push(chunkBytes);
+    const lines = this.readBufferedLines(connection, chunk);
+    for (const line of lines) {
+      if (!line) {
+        continue;
+      }
 
-    const merged = concatUint8Arrays(connection.pendingChunks);
-    const lines = this.convertEncoding(merged).split(lineDelimiter);
-
-    if (lines.pop()) {
-      // if buffer doesn't end \r\n, there are more chunks.
-      return;
-    }
-
-    // Reset buffer
-    connection.pendingChunks = [];
-
-    for (const line of lines.filter(Boolean)) {
       this.debug('Received:', line);
       const message = parseMessage(line, this.opt.stripColors, this.opt.enableStrictParse);
       this.emit('raw', message);
@@ -420,14 +416,73 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  private convertEncoding(str: string | Uint8Array) {
+  private convertEncoding(str: Uint8Array) {
     if (this.opt.encoding) {
-      return convertEncodingHelper(str, this.opt.encoding, (err, charset) => {
-        this.debug(err, { str, charset });
-      });
+      return convertEncodingHelper(str, this.opt.encoding);
     }
 
-    return typeof str === 'string' ? str : utf8Decoder.decode(str);
+    return utf8Decoder.decode(str);
+  }
+
+  private readBufferedLines(
+    connection: IrcClient['connection'],
+    chunk: string | Uint8Array,
+  ): string[] {
+    if (typeof chunk === 'string' && !connection.pendingBytes?.length) {
+      return this.readBufferedTextLines(connection, chunk);
+    }
+
+    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
+    if (connection.pendingText) {
+      const pendingText = utf8Encoder.encode(connection.pendingText);
+      connection.pendingText = undefined;
+      return this.readBufferedByteLines(connection, concatUint8Arrays(pendingText, chunkBytes));
+    }
+
+    return this.readBufferedByteLines(connection, chunkBytes);
+  }
+
+  private readBufferedTextLines(connection: IrcClient['connection'], chunk: string): string[] {
+    const text = `${connection.pendingText ?? ''}${chunk}`;
+    const lines = text.split(lineDelimiter);
+    const pendingText = lines.pop() ?? '';
+    connection.pendingText = pendingText || undefined;
+    return lines;
+  }
+
+  private readBufferedByteLines(connection: IrcClient['connection'], chunk: Uint8Array): string[] {
+    if (!connection.pendingBytes?.length && isLineTerminated(chunk)) {
+      connection.pendingBytes = undefined;
+      return this.convertEncoding(chunk).split(lineDelimiter);
+    }
+
+    const bytes = connection.pendingBytes?.length
+      ? concatUint8Arrays(connection.pendingBytes, chunk)
+      : chunk;
+    const lines: string[] = [];
+    let lineStart = 0;
+
+    for (let i = 0; i < bytes.length; i++) {
+      const byte = bytes[i];
+      if (byte !== 10 && byte !== 13) {
+        continue;
+      }
+
+      lines.push(this.convertEncoding(bytes.subarray(lineStart, i)));
+      if (byte === 13 && bytes[i + 1] === 10) {
+        i++;
+      }
+
+      lineStart = i + 1;
+    }
+
+    if (lineStart < bytes.length) {
+      connection.pendingBytes = bytes.slice(lineStart);
+    } else {
+      connection.pendingBytes = undefined;
+    }
+
+    return lines;
   }
 
   private _speak(kind: string, target: string, text: string) {

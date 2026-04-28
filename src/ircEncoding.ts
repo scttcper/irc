@@ -1,30 +1,11 @@
-import charsetDetector from 'chardet';
 import * as iconv from 'iconv-lite';
 
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder();
 const lineDelimiter = /\r\n|\r|\n/;
 
-function convertEncodingHelper(
-  str: string | Uint8Array,
-  encoding: string,
-  errorHandler: (e: Error, charset?: string) => void,
-) {
-  let charset: string | null;
-  try {
-    const bytes = typeof str === 'string' ? utf8Encoder.encode(str) : str;
-    charset = charsetDetector.detect(bytes);
-    const decoded = iconv.decode(bytes, charset ?? '');
-    return iconv.decode(iconv.encode(decoded, encoding), encoding);
-  } catch (err) {
-    if (!errorHandler) {
-      throw err;
-    }
-
-    errorHandler(err as Error, charset);
-  }
-
-  return typeof str === 'string' ? str : utf8Decoder.decode(str);
+function convertEncodingHelper(str: Uint8Array, encoding: string) {
+  return iconv.decode(str, encoding);
 }
 
 // Reusable buffer for encodeInto — 4 bytes is the max a single code point needs in UTF-8
