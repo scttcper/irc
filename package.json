@@ -25,17 +25,16 @@
     "lint:fix": "oxfmt && oxlint . --fix",
     "prepare": "npm run build",
     "build": "tsc",
+    "bench": "vitest bench",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ci": "vitest run"
   },
   "dependencies": {
-    "chardet": "^2.1.1",
     "debug": "^4.4.3",
     "iconv-lite": "^0.7.2",
     "lodash.defaultsdeep": "^4.6.1",
-    "tiny-typed-emitter": "^2.1.0",
-    "uint8array-extras": "^1.5.0"
+    "tiny-typed-emitter": "^2.1.0"
   },
   "devDependencies": {
     "@ctrl/oxlint-config": "1.5.0",

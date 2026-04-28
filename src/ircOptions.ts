@@ -50,7 +50,7 @@ export interface IrcOptions {
   channelPrefixes: string;
   /** Soft limit, in bytes, for splitting outgoing messages before sending multiple lines. */
   messageSplit: number;
-  /** Force a specific text encoding for incoming data instead of using UTF-8 / charset detection. */
+  /** Decode incoming byte data with a specific text encoding. `null` uses UTF-8. */
   encoding: string | null;
   /** Idle time in milliseconds before the client sends a keepalive `PING`. */
   millisecondsOfSilenceBeforePingSent: number;
