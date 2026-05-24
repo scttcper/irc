@@ -6,14 +6,7 @@ import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
 import { CyclingPingTimer } from './cyclingPingTimer.js';
-import {
-  convertEncodingHelper,
-  lineDelimiter,
-  truncateUtf8,
-  utf8ByteLength,
-  utf8Decoder,
-  utf8Encoder,
-} from './ircEncoding.js';
+import { truncateUtf8, utf8ByteLength } from './ircEncoding.js';
 import {
   applyIsupport,
   defaultChannelModes,
@@ -29,16 +22,12 @@ import {
   type Users,
   type WhoIsData,
 } from './ircTypes.js';
+import { LineReader } from './lineReader.js';
 import { Message, parseMessage } from './parseMessage.js';
-import { concatUint8Arrays, stringToBase64 } from './uint8array.js';
+import { stringToBase64 } from './uint8array.js';
 
 const log = debug('irc');
 const whoisTimeoutMs = 30_000;
-
-function isLineTerminated(bytes: Uint8Array): boolean {
-  const lastByte = bytes[bytes.length - 1];
-  return lastByte === 10 || lastByte === 13;
-}
 
 function containsInvalidLineByte(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
@@ -72,9 +61,8 @@ export type { IrcOptions } from './ircOptions.js';
 export class IrcClient extends TypedEmitter<IrcClientEvents> {
   readonly opt: IrcOptions;
   connection!: {
-    pendingBytes?: Uint8Array;
-    pendingText?: string;
     cyclingPingTimer: CyclingPingTimer;
+    lineReader: LineReader;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     renickInterval?: ReturnType<typeof setInterval>;
     requestedDisconnect?: boolean;
@@ -150,6 +138,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.clearRetryTimeout();
     const connection: IrcClient['connection'] = {
       cyclingPingTimer: new CyclingPingTimer(this.opt),
+      lineReader: new LineReader(this.opt.encoding),
     };
     const onConnect = () => {
       // Callback called only after successful socket connection
@@ -287,7 +276,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.connection.cyclingPingTimer.notifyOfActivity();
 
-    const lines = this.readBufferedLines(connection, chunk);
+    const lines = connection.lineReader.read(chunk);
     for (const line of lines) {
       if (!line) {
         continue;
@@ -456,75 +445,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (this.connection?.renickInterval) {
       clearInterval(this.connection.renickInterval);
     }
-  }
-
-  private convertEncoding(str: Uint8Array) {
-    if (this.opt.encoding) {
-      return convertEncodingHelper(str, this.opt.encoding);
-    }
-
-    return utf8Decoder.decode(str);
-  }
-
-  private readBufferedLines(
-    connection: IrcClient['connection'],
-    chunk: string | Uint8Array,
-  ): string[] {
-    if (typeof chunk === 'string' && !connection.pendingBytes?.length) {
-      return this.readBufferedTextLines(connection, chunk);
-    }
-
-    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    if (connection.pendingText) {
-      const pendingText = utf8Encoder.encode(connection.pendingText);
-      connection.pendingText = undefined;
-      return this.readBufferedByteLines(connection, concatUint8Arrays(pendingText, chunkBytes));
-    }
-
-    return this.readBufferedByteLines(connection, chunkBytes);
-  }
-
-  private readBufferedTextLines(connection: IrcClient['connection'], chunk: string): string[] {
-    const text = `${connection.pendingText ?? ''}${chunk}`;
-    const lines = text.split(lineDelimiter);
-    const pendingText = lines.pop() ?? '';
-    connection.pendingText = pendingText || undefined;
-    return lines;
-  }
-
-  private readBufferedByteLines(connection: IrcClient['connection'], chunk: Uint8Array): string[] {
-    if (!connection.pendingBytes?.length && isLineTerminated(chunk)) {
-      connection.pendingBytes = undefined;
-      return this.convertEncoding(chunk).split(lineDelimiter);
-    }
-
-    const bytes = connection.pendingBytes?.length
-      ? concatUint8Arrays(connection.pendingBytes, chunk)
-      : chunk;
-    const lines: string[] = [];
-    let lineStart = 0;
-
-    for (let i = 0; i < bytes.length; i++) {
-      const byte = bytes[i];
-      if (byte !== 10 && byte !== 13) {
-        continue;
-      }
-
-      lines.push(this.convertEncoding(bytes.subarray(lineStart, i)));
-      if (byte === 13 && bytes[i + 1] === 10) {
-        i++;
-      }
-
-      lineStart = i + 1;
-    }
-
-    if (lineStart < bytes.length) {
-      connection.pendingBytes = bytes.slice(lineStart);
-    } else {
-      connection.pendingBytes = undefined;
-    }
-
-    return lines;
   }
 
   private _speak(kind: string, target: string, text: string) {

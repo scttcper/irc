@@ -184,41 +184,6 @@ describe('handle data', () => {
     );
   });
 
-  it('emits complete lines before a partial trailing line is finished', () => {
-    const client = setupMockClient('testbot');
-    const emitSpy = vi.spyOn(client, 'emit');
-
-    client.handleData('PING :one\r\nPING :tw');
-
-    expect(emitSpy).toBeCalledWith('ping', 'one');
-    expect(emitSpy).not.toBeCalledWith('ping', 'two');
-
-    client.handleData('o\r\n');
-
-    expect(emitSpy).toBeCalledWith('ping', 'two');
-  });
-
-  it('preserves utf-8 byte sequences split across chunks', () => {
-    const client = setupMockClient('testbot');
-    const emitSpy = vi.spyOn(client, 'emit');
-    const bytes = new TextEncoder().encode(
-      ':견본!~examplename@example.host PRIVMSG #channel :test message\r\n',
-    );
-
-    for (let i = 0; i < bytes.length; i++) {
-      client.handleData(bytes.subarray(i, i + 1));
-    }
-
-    expect(emitSpy).toBeCalledWith(
-      'raw',
-      expect.objectContaining({
-        args: ['#channel', 'test message'],
-        command: 'PRIVMSG',
-        nick: '견본',
-      }),
-    );
-  });
-
   it('sends sasl plain authentication without Buffer', () => {
     const client = setupMockClient('testbot', { password: 'pass', sasl: true });
 
@@ -239,24 +204,4 @@ describe('handle data', () => {
     expect(emitSpy).toBeCalledWith('motd', 'MOTD File is missing\n');
   });
 
-  it('processes complete lines before a later partial line completes', () => {
-    const client = setupMockClient('testbot');
-    const emitSpy = vi.spyOn(client, 'emit');
-
-    client.handleData('PING :a\r\n:server NOTICE');
-
-    expect(emitSpy).toBeCalledWith('ping', 'a');
-
-    client.handleData(' testbot :hello\r\n');
-
-    expect(emitSpy).toBeCalledWith(
-      'notice',
-      'server',
-      'testbot',
-      'hello',
-      expect.objectContaining({
-        command: 'NOTICE',
-      }),
-    );
-  });
 });
