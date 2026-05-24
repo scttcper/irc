@@ -10,6 +10,7 @@ import {
   getSaslPlainAuthenticateChunks,
   handleCapMessage,
 } from './capabilityNegotiation.js';
+import { applyChannelModeChange, applyChannelModeSnapshot } from './channelModes.js';
 import { ChannelStore } from './channelStore.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
@@ -730,78 +731,24 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    const modeList = [...message.args[1]];
-    let adding = true;
-    const modeArgs = message.args.slice(2);
-    const chanModes = (mode: string, param?: string | string[]) => {
-      if (adding) {
-        if (!channel.mode.includes(mode)) {
-          channel.mode += mode;
-        }
-
-        if (typeof param === 'undefined') {
-          channel.modeParams[mode] = [];
-        } else if (Array.isArray(param)) {
-          channel.modeParams[mode] = channel.modeParams[mode]
-            ? [...channel.modeParams[mode], ...param]
-            : param;
-        } else {
-          channel.modeParams[mode] = [param];
-        }
-      } else if (mode in channel.modeParams) {
-        if (Array.isArray(param)) {
-          channel.modeParams[mode] = channel.modeParams[mode].filter((v: string) => v !== param[0]);
-        }
-
-        if (!Array.isArray(param) || channel.modeParams[mode].length === 0) {
-          channel.mode = channel.mode.replace(mode, '');
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-          delete channel.modeParams[mode];
-        }
-      }
-    };
-
-    modeList.forEach(mode => {
-      if (mode === '+') {
-        adding = true;
-        return;
-      }
-
-      if (mode === '-') {
-        adding = false;
-        return;
-      }
-
-      const eventName = adding ? '+mode' : '-mode';
-      const supported = this.supported.channel.modes;
-      let modeArg: string;
-      if (mode in this.prefixForMode) {
-        modeArg = modeArgs.shift();
-        this.channelStore.updateUserPrefix(channel, modeArg, this.prefixForMode[mode], adding);
-
-        this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
-      } else if (supported.a.includes(mode)) {
-        modeArg = modeArgs.shift();
-        chanModes(mode, [modeArg]);
-        this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
-      } else if (supported.b.includes(mode)) {
-        modeArg = modeArgs.shift();
-        chanModes(mode, modeArg);
-        this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
-      } else if (supported.c.includes(mode)) {
-        if (adding) {
-          modeArg = modeArgs.shift();
-        } else {
-          modeArg = undefined;
-        }
-
-        chanModes(mode, modeArg);
-        this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
-      } else if (supported.d.includes(mode)) {
-        chanModes(mode);
-        this.emit(eventName, message.args[0], message.nick, mode, undefined, message);
-      }
+    const events = applyChannelModeChange({
+      channel,
+      modeArgs: message.args.slice(2),
+      modes: message.args[1],
+      prefixForMode: this.prefixForMode,
+      supported: this.supported.channel.modes,
     });
+
+    for (const event of events) {
+      this.emit(
+        event.eventName,
+        message.args[0],
+        message.nick,
+        event.mode,
+        event.argument,
+        message,
+      );
+    }
   }
 
   private chanData(name: string, create = false): ChannelData | undefined {
@@ -1078,33 +1025,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handleChannelmodeis(message: Message): void {
     const channel = this.chanData(message.args[1]);
     if (channel) {
-      channel.mode = message.args[2];
-      channel.modeParams = {};
-      // RPL_CHANNELMODEIS includes mode arguments after the modestring.
-      // https://modern.ircdocs.horse/#rplchannelmodeis-324
-      const modeArgs = message.args.slice(3);
-      for (const mode of message.args[2].replaceAll(/[+-]/g, '')) {
-        if (this.channelModeHasSnapshotArg(mode)) {
-          const modeArg = modeArgs.shift();
-          if (modeArg) {
-            channel.modeParams[mode] = [modeArg];
-          }
-        }
-      }
+      applyChannelModeSnapshot({
+        channel,
+        modeArgs: message.args.slice(3),
+        modes: message.args[2],
+        supported: this.supported.channel.modes,
+      });
     }
-  }
-
-  private channelModeHasSnapshotArg(mode: string): boolean {
-    const { a, b, c, d } = this.supported.channel.modes;
-    if (a.includes(mode) || b.includes(mode) || c.includes(mode)) {
-      return true;
-    }
-
-    if (d.includes(mode)) {
-      return false;
-    }
-
-    return mode === 'b' || mode === 'k' || mode === 'l';
   }
 
   private _handleCreationtime(message: Message): void {

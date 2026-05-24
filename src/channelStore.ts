@@ -91,18 +91,4 @@ export class ChannelStore {
       }
     }
   }
-
-  updateUserPrefix(channel: ChannelData, nick: string, prefix: string, adding: boolean): void {
-    if (!Object.hasOwn(channel.users, nick)) {
-      return;
-    }
-
-    if (adding) {
-      if (!channel.users[nick].includes(prefix)) {
-        channel.users[nick] += prefix;
-      }
-    } else {
-      channel.users[nick] = channel.users[nick].replace(prefix, '');
-    }
-  }
 }

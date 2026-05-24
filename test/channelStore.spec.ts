@@ -47,15 +47,3 @@ it('adds NAMES replies using the advertised prefix map', () => {
     voice: '+',
   });
 });
-
-it('updates user prefixes without duplicating existing prefixes', () => {
-  const store = new ChannelStore();
-  const channel = store.ensure('#chan');
-  channel.users.friend = '@';
-
-  store.updateUserPrefix(channel, 'friend', '@', true);
-  store.updateUserPrefix(channel, 'friend', '+', true);
-  store.updateUserPrefix(channel, 'friend', '@', false);
-
-  expect(channel.users.friend).toBe('+');
-});
