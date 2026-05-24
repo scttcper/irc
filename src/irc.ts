@@ -10,6 +10,7 @@ import {
   getSaslPlainAuthenticateChunks,
   handleCapMessage,
 } from './capabilityNegotiation.js';
+import { ChannelListTracker } from './channelListTracker.js';
 import { applyChannelModeChange, applyChannelModeSnapshot } from './channelModes.js';
 import { ChannelStore } from './channelStore.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
@@ -95,6 +96,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   nickMod = 0;
   hostMask = '';
   maxLineLength?: number;
+  private readonly channelListTracker = new ChannelListTracker();
   private readonly channelStore = new ChannelStore();
   private readonly whoisTracker = new WhoisTracker();
   // Features supported by the server
@@ -120,8 +122,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   motd?: string;
   modeForPrefix: Record<string, string> = { ...defaultModeForPrefix };
   prefixForMode: Record<string, string> = { ...defaultPrefixForMode };
-  channellist: ChannelData[] = [];
-  private channellistOpen = false;
   retryTimeout?: ReturnType<typeof setTimeout>;
   /** Channels joined at runtime, tracked separately from the initial options. */
   private _autoJoinChannels: string[] = [];
@@ -154,6 +154,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   set chans(channels: Record<string, ChannelData>) {
     this.channelStore.replace(channels);
+  }
+
+  get channellist(): ChannelData[] {
+    return this.channelListTracker.items;
+  }
+
+  set channellist(channels: ChannelData[]) {
+    this.channelListTracker.replace(channels);
   }
 
   connect(retryCount = 0) {
@@ -575,25 +583,17 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_liststart': {
-        this.channellist = [];
-        this.channellistOpen = true;
+        this.channelListTracker.start();
         this.emit('channellist_start');
         break;
       }
       case 'rpl_list': {
-        // RPL_LISTSTART may be skipped, so the first RPL_LIST starts a new list.
-        // https://modern.ircdocs.horse/#rplliststart-321
-        if (!this.channellistOpen) {
-          this.channellist = [];
-          this.channellistOpen = true;
-        }
-
-        this._handleList(message);
+        const channel = this.channelListTracker.add(message);
+        this.emit('channellist_item', channel);
         break;
       }
       case 'rpl_listend': {
-        this.emit('channellist', this.channellist);
-        this.channellistOpen = false;
+        this.emit('channellist', this.channelListTracker.end());
         break;
       }
       case 'rpl_topicwhotime': {
@@ -927,17 +927,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     // channel, who, by, reason
     this.emitChannelEvent('kick', message.args[0], message.args[1], message.nick, message.args[2]);
-  }
-
-  private _handleList(message: Message): void {
-    const channel = {
-      name: message.args[1],
-      users: {},
-      userCount: Number.parseInt(message.args[2], 10),
-      topic: message.args[3],
-    };
-    this.emit('channellist_item', channel);
-    this.channellist.push(channel);
   }
 
   private _handleKill(message: Message): void {
