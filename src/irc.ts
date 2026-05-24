@@ -20,14 +20,13 @@ import {
   type IrcClientEvents,
   type SupportedFeatures,
   type Users,
-  type WhoIsData,
 } from './ircTypes.js';
 import { LineReader } from './lineReader.js';
 import { Message, parseMessage } from './parseMessage.js';
 import { stringToBase64 } from './uint8array.js';
+import { WhoisTracker, type WhoisResult } from './whoisTracker.js';
 
 const log = debug('irc');
-const whoisTimeoutMs = 30_000;
 
 function containsInvalidLineByte(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
@@ -73,7 +72,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   nickMod = 0;
   hostMask = '';
   maxLineLength?: number;
-  _whoisData: Record<string, WhoIsData> = {};
+  private readonly whoisTracker = new WhoisTracker();
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
   // ISUPPORT defaults: https://modern.ircdocs.horse/#feature-advertisement
@@ -101,14 +100,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   channellist: ChannelData[] = [];
   private channellistOpen = false;
   retryTimeout?: ReturnType<typeof setTimeout>;
-  private pendingWhois = new Map<
-    string,
-    Set<{
-      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
-      reject: (error: Error) => void;
-      timeout: ReturnType<typeof setTimeout>;
-    }>
-  >();
   /** Channels joined at runtime, tracked separately from the initial options. */
   private _autoJoinChannels: string[] = [];
 
@@ -185,7 +176,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
 
       this.debug('Disconnected: reconnecting');
-      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
+      this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
       connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       // connection = null;
@@ -321,45 +312,31 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   /** Request a whois for the specified ``nick``. */
-  async whois(nick: string): Promise<{ nick?: string; user?: string; host?: string }> {
-    const normalizedNick = nick.toLowerCase();
-    const promise = new Promise<{ nick?: string; user?: string; host?: string }>(
-      (resolve, reject) => {
-        const timeout = setTimeout(() => {
-          this.removePendingWhoisRequest(normalizedNick, request);
-          reject(new Error(`WHOIS timed out for ${nick}`));
-        }, whoisTimeoutMs);
-
-        const request = { resolve, reject, timeout };
-        const requests = this.pendingWhois.get(normalizedNick) ?? new Set();
-        requests.add(request);
-        this.pendingWhois.set(normalizedNick, requests);
-      },
-    );
+  async whois(nick: string): Promise<WhoisResult> {
+    const request = this.whoisTracker.request(nick);
 
     if (this.connection?.requestedDisconnect) {
-      this.rejectPendingWhois(new Error('Cannot WHOIS while disconnected'));
-      return promise;
+      this.whoisTracker.rejectAll(new Error('Cannot WHOIS while disconnected'));
+      return request.promise;
     }
 
     if (!this.connection?.socket) {
-      this.rejectPendingWhois(new Error('Cannot WHOIS before connecting'));
-      return promise;
+      this.whoisTracker.rejectAll(new Error('Cannot WHOIS before connecting'));
+      return request.promise;
     }
 
-    const shouldSend = (this.pendingWhois.get(normalizedNick)?.size ?? 0) === 1;
-    if (shouldSend) {
+    if (request.shouldSend) {
       this.send('WHOIS', nick);
     }
 
-    return promise;
+    return request.promise;
   }
 
   end() {
     if (this.connection?.socket) {
       this.connection.requestedDisconnect = true;
       this.clearRetryTimeout();
-      this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
+      this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
       this.connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
       this.connection.socket.destroy();
@@ -372,7 +349,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
 
     this.clearRetryTimeout();
-    this.rejectPendingWhois(new Error('Disconnected before WHOIS completed'));
+    this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
     this.connection.cyclingPingTimer.stop();
     this.cancelAutoRenick();
     this.connection.socket.destroy();
@@ -382,51 +359,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (this.retryTimeout) {
       clearTimeout(this.retryTimeout);
       this.retryTimeout = undefined;
-    }
-  }
-
-  private removePendingWhoisRequest(
-    nick: string,
-    request: {
-      resolve: (info: { nick?: string; user?: string; host?: string }) => void;
-      reject: (error: Error) => void;
-      timeout: ReturnType<typeof setTimeout>;
-    },
-  ) {
-    clearTimeout(request.timeout);
-    const requests = this.pendingWhois.get(nick);
-    if (!requests) {
-      return;
-    }
-
-    requests.delete(request);
-    if (requests.size === 0) {
-      this.pendingWhois.delete(nick);
-    }
-  }
-
-  private resolvePendingWhois(nick: string, info: { nick?: string; user?: string; host?: string }) {
-    const requests = this.pendingWhois.get(nick.toLowerCase());
-    if (!requests) {
-      return;
-    }
-
-    for (const request of requests) {
-      clearTimeout(request.timeout);
-      request.resolve(info);
-    }
-
-    this.pendingWhois.delete(nick.toLowerCase());
-  }
-
-  private rejectPendingWhois(error: Error) {
-    for (const [nick, requests] of this.pendingWhois.entries()) {
-      for (const request of requests) {
-        clearTimeout(request.timeout);
-        request.reject(error);
-      }
-
-      this.pendingWhois.delete(nick);
     }
   }
 
@@ -627,62 +559,20 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this._handleRplTopic(message);
         break;
       }
-      case 'rpl_away': {
-        this._addWhoisData(message.args[1], 'away', message.args[2], true);
-        break;
-      }
-      case 'rpl_whoisuser': {
-        this._addWhoisData(message.args[1], 'user', message.args[2]);
-        this._addWhoisData(message.args[1], 'host', message.args[3]);
-        this._addWhoisData(message.args[1], 'realname', message.args[5]);
-        break;
-      }
-      case 'rpl_whoisidle': {
-        this._addWhoisData(message.args[1], 'idle', message.args[2]);
-        break;
-      }
-      case 'rpl_whoischannels': {
-        // RPL_WHOISCHANNELS can be repeated when the list does not fit once.
-        // https://modern.ircdocs.horse/#rplwhoischannels-319
-        const existingChannels = this._whoisData[message.args[1]]?.channels;
-        const channels = Array.isArray(existingChannels) ? existingChannels : [];
-        this._addWhoisData(message.args[1], 'channels', [
-          ...channels,
-          ...message.args[2].trim().split(/\s+/),
-        ]);
-        break;
-      }
-      case 'rpl_whoisserver': {
-        this._addWhoisData(message.args[1], 'server', message.args[2]);
-        this._addWhoisData(message.args[1], 'serverinfo', message.args[3]);
-        break;
-      }
-      case 'rpl_whoisoperator': {
-        this._addWhoisData(message.args[1], 'operator', message.args[2]);
-        break;
-      }
-      case '330': {
-        // rpl_whoisaccount?
-        this._addWhoisData(message.args[1], 'account', message.args[2]);
-        this._addWhoisData(message.args[1], 'accountinfo', message.args[3]);
-        break;
-      }
-      case 'rpl_endofwhois': {
-        const whoisData = this._clearWhoisData(message.args[1]);
-        this.resolvePendingWhois(message.args[1], whoisData);
-        this.emit('whois', whoisData);
-        break;
-      }
+      case 'rpl_away':
+      case 'rpl_whoisuser':
+      case 'rpl_whoisidle':
+      case 'rpl_whoischannels':
+      case 'rpl_whoisserver':
+      case 'rpl_whoisoperator':
+      case '330':
+      case 'rpl_endofwhois':
       case 'rpl_whoreply': {
-        this._addWhoisData(message.args[5], 'user', message.args[2]);
-        this._addWhoisData(message.args[5], 'host', message.args[3]);
-        this._addWhoisData(message.args[5], 'server', message.args[4]);
-        const realnameMatch = /[0-9]+\s*(.+)/g.exec(message.args[7]);
-        this._addWhoisData(message.args[5], 'realname', realnameMatch?.[1] ?? message.args[7]);
-        // emit right away because rpl_endofwho doesn't contain nick
-        const whoisData = this._clearWhoisData(message.args[5]);
-        this.resolvePendingWhois(message.args[5], whoisData);
-        this.emit('whois', whoisData);
+        const whoisData = this.whoisTracker.handleMessage(message);
+        if (whoisData) {
+          this.emit('whois', whoisData);
+        }
+
         break;
       }
       case 'rpl_liststart': {
@@ -1063,29 +953,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         }
       }, this.opt.renickDelay);
     }
-  }
-
-  private _addWhoisData(
-    nick: string,
-    key: string,
-    value: string | string[],
-    onlyIfExists?: boolean,
-  ) {
-    if (onlyIfExists && !this._whoisData[nick]) {
-      return;
-    }
-
-    this._whoisData[nick] = this._whoisData[nick] ?? { nick };
-    this._whoisData[nick][key] = value;
-  }
-
-  private _clearWhoisData(nick: string) {
-    // Ensure that at least the nick exists before trying to return
-    this._addWhoisData(nick, 'nick', nick);
-    const data = this._whoisData[nick];
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete this._whoisData[nick];
-    return data;
   }
 
   private _connectionHandler() {

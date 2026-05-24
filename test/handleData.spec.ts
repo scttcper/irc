@@ -203,5 +203,4 @@ describe('handle data', () => {
     expect(client.motd).toBe('MOTD File is missing\n');
     expect(emitSpy).toBeCalledWith('motd', 'MOTD File is missing\n');
   });
-
 });

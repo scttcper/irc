@@ -27,18 +27,16 @@ it('preserves utf-8 byte sequences split across chunks', () => {
     lines.push(...reader.read(bytes.subarray(i, i + 1)));
   }
 
-  expect(lines).toEqual([
-    ':견본!~examplename@example.host PRIVMSG #channel :test message',
-  ]);
+  expect(lines).toEqual([':견본!~examplename@example.host PRIVMSG #channel :test message']);
 });
 
 it('decodes byte chunks with an explicit non-utf8 encoding', () => {
   const reader = new LineReader('latin1');
   const bytes = Uint8Array.from([
-    ...':server NOTICE testbot :caf'.split('').map(char => char.charCodeAt(0)),
-    0xe9,
-    0x0d,
-    0x0a,
+    ...[...':server NOTICE testbot :caf'].map(char => char.charCodeAt(0)),
+    233,
+    13,
+    10,
   ]);
 
   expect(reader.read(bytes)).toEqual([':server NOTICE testbot :café']);

@@ -1,9 +1,4 @@
-import {
-  convertEncodingHelper,
-  lineDelimiter,
-  utf8Decoder,
-  utf8Encoder,
-} from './ircEncoding.js';
+import { convertEncodingHelper, lineDelimiter, utf8Decoder, utf8Encoder } from './ircEncoding.js';
 import { concatUint8Arrays } from './uint8array.js';
 
 function isLineTerminated(bytes: Uint8Array): boolean {

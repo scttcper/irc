@@ -8,18 +8,10 @@ describe('user events', () => {
   it('emits events per fixtures', () => {
     const client = setupMockClient('testbot');
 
-    // welcome bot, give relevant prefix symbols
-    client.handleData(':localhost 311 testbot testbot ~testbot EXAMPLE.HOST * :testbot\r\n');
+    // give relevant prefix symbols
     client.handleData(
       ':localhost 005 testbot PREFIX=(qaohv)~&@%+ :are supported by this server\r\n',
     );
-    expect(client._whoisData).toHaveProperty('testbot');
-    expect(client._whoisData.testbot).toEqual({
-      nick: 'testbot',
-      user: '~testbot',
-      host: 'EXAMPLE.HOST',
-      realname: 'testbot',
-    });
 
     // #test: testbot joins. users: testbot, user1, user2
     const emitSpy = vi.spyOn(client, 'emit');
