@@ -5,14 +5,11 @@ import debug from 'debug';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
-import {
-  getCapabilityRegistrationCommands,
-  getSaslPlainAuthenticateChunks,
-  handleCapMessage,
-} from './capabilityNegotiation.js';
+import { getSaslPlainAuthenticateChunks, handleCapMessage } from './capabilityNegotiation.js';
 import { ChannelListTracker } from './channelListTracker.js';
 import { applyChannelModeChange, applyChannelModeSnapshot } from './channelModes.js';
 import { ChannelStore } from './channelStore.js';
+import { getConnectionRegistrationCommands } from './connectionRegistration.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { utf8ByteLength } from './ircEncoding.js';
@@ -839,32 +836,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _connectionHandler() {
     this.debug('Socket connection successful');
 
-    // WEBIRC
-    if (this.opt.webirc.ip && this.opt.webirc.pass && this.opt.webirc.host) {
-      this.send(
-        'WEBIRC',
-        this.opt.webirc.pass,
-        this.opt.userName,
-        this.opt.webirc.host,
-        this.opt.webirc.ip,
-      );
-    }
-
-    for (const command of getCapabilityRegistrationCommands(this.opt.sasl)) {
+    this.debug('Sending irc NICK/USER');
+    for (const command of getConnectionRegistrationCommands(this.opt)) {
       this.send(...command);
     }
 
-    if (this.opt.password) {
-      this.send('PASS', this.opt.password);
-    }
-
-    // handshake details
-    this.debug('Sending irc NICK/USER');
-    this.send('NICK', this.opt.nick);
     this.nick = this.opt.nick;
     this._updateMaxLineLength();
-    // USER syntax: https://modern.ircdocs.horse/#user-message
-    this.send('USER', this.opt.userName, '0', '*', this.opt.realName);
 
     this.emit('connect');
   }
