@@ -22,7 +22,6 @@ it('renick attains suitable fallback', async () => {
   vi.clearAllMocks();
 
   expect(client.nick).toBe('testbot1');
-  expect(client.nickMod).toBe(1);
 
   client.handleData(':localhost 433 * testbot1 :Nickname is already in use.\r\n');
 

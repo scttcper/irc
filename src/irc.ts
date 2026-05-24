@@ -148,14 +148,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.channelListTracker.replace(channels);
   }
 
-  get nickMod(): number {
-    return this.nicknameRecovery.nickMod;
-  }
-
-  set nickMod(value: number) {
-    this.nicknameRecovery.nickMod = value;
-  }
-
   connect(retryCount = 0) {
     this.clearRetryTimeout();
     this.nicknameRecovery.beginConnection();

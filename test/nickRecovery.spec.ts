@@ -41,7 +41,6 @@ describe('NickRecovery', () => {
 
     expect(actions.useFallbackNick).toHaveBeenNthCalledWith(1, 'testbot1');
     expect(actions.useFallbackNick).toHaveBeenNthCalledWith(2, 'testbot2');
-    expect(recovery.nickMod).toBe(2);
   });
 
   it('suppresses repeated preferred nick collisions while auto-renick has already tried it', () => {
@@ -67,6 +66,5 @@ describe('NickRecovery', () => {
 
     expect(actions.useFallbackNick).toHaveBeenNthCalledWith(1, 'testbot1');
     expect(actions.useFallbackNick).toHaveBeenNthCalledWith(2, 'testbot2');
-    expect(recovery.nickMod).toBe(2);
   });
 });

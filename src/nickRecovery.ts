@@ -21,14 +21,6 @@ export class NickRecovery {
     this.actions = actions;
   }
 
-  get nickMod(): number {
-    return this.fallbackSuffix;
-  }
-
-  set nickMod(value: number) {
-    this.fallbackSuffix = value;
-  }
-
   beginConnection(): void {
     this.cancelAutoRenick();
     this.renickInterval = undefined;
