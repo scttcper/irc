@@ -39,6 +39,13 @@ type CtcpContext = {
   message: Message;
 };
 
+type ChannelEventArgs = {
+  join: [nick: string];
+  kick: [nick: string, by: string, reason: string];
+  names: [users: Users];
+  part: [nick: string, reason: string];
+};
+
 function containsInvalidLineByte(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
@@ -381,15 +388,42 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  private emitChannelEvent(
-    eventName: 'notice' | 'part' | 'kick' | 'join' | 'names',
+  private emitChannelEvent<EventName extends keyof ChannelEventArgs>(
+    eventName: EventName,
     channel: string,
-    ...args: string[] | [string] | [Users]
-  ) {
-    // @ts-expect-error ignore rough type spread
-    this.emit(eventName, channel, ...args);
-    // @ts-expect-error ignore rough type spread
-    this.emit(eventName + channel, ...args);
+    ...args: ChannelEventArgs[EventName]
+  ): void {
+    switch (eventName) {
+      case 'join': {
+        const [nick] = args as ChannelEventArgs['join'];
+        this.emit('join', channel, nick);
+        break;
+      }
+      case 'kick': {
+        const [nick, by, reason] = args as ChannelEventArgs['kick'];
+        this.emit('kick', channel, nick, by, reason);
+        break;
+      }
+      case 'names': {
+        const [users] = args as ChannelEventArgs['names'];
+        this.emit('names', channel, users);
+        break;
+      }
+      case 'part': {
+        const [nick, reason] = args as ChannelEventArgs['part'];
+        this.emit('part', channel, nick, reason);
+        break;
+      }
+    }
+
+    this.emitDynamicChannelEvent(`${eventName}${channel}`, args);
+  }
+
+  private emitDynamicChannelEvent(eventName: string, args: readonly unknown[]): void {
+    this.emit(
+      eventName as keyof IrcClientEvents,
+      ...(args as Parameters<IrcClientEvents[keyof IrcClientEvents]>),
+    );
   }
 
   private cancelAutoRenick(): void {
