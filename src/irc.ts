@@ -5,6 +5,11 @@ import debug from 'debug';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
+import {
+  getCapabilityRegistrationCommands,
+  getSaslPlainAuthenticateChunks,
+  handleCapMessage,
+} from './capabilityNegotiation.js';
 import { ChannelStore } from './channelStore.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
@@ -26,7 +31,6 @@ import {
 import { LineReader } from './lineReader.js';
 import { splitOutgoingMessage } from './messageSplitter.js';
 import { Message, parseMessage } from './parseMessage.js';
-import { stringToBase64 } from './uint8array.js';
 import { WhoisTracker, type WhoisResult } from './whoisTracker.js';
 
 const log = debug('irc');
@@ -921,11 +925,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       );
     }
 
-    // CAP negotiation suspends registration until CAP END.
-    // https://modern.ircdocs.horse/#capability-negotiation
-    if (this.opt.sasl) {
-      // see http://ircv3.net/specs/extensions/sasl-3.1.html
-      this.send('CAP', 'LS', '302');
+    for (const command of getCapabilityRegistrationCommands(this.opt.sasl)) {
+      this.send(...command);
     }
 
     if (this.opt.password) {
@@ -954,17 +955,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    // AUTHENTICATE response (params) must be split into 400-byte chunks
-    const authMessage = stringToBase64(
-      `${this.opt.nick}\0${this.opt.userName}\0${this.opt.password}`,
-    );
-    // must output a "+" after a 400-byte string to make clear it's finished
-    for (let i = 0; i < (authMessage.length + 1) / 400; i++) {
-      let chunk = authMessage.slice(i * 400, (i + 1) * 400);
-      if (chunk === '') {
-        chunk = '+';
-      }
-
+    for (const chunk of getSaslPlainAuthenticateChunks(this.opt)) {
       this.send('AUTHENTICATE', chunk);
     }
   }
@@ -1042,37 +1033,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleCap(message: Message): void {
-    // client identifier name, cap subcommand, params
-    if (message.args[1] === 'NAK') {
-      // capabilities not handled, error
-      this.send('CAP', 'END');
+    const response = handleCapMessage(message, this.opt.sasl);
+    for (const command of response.commands) {
+      this.send(...command);
+    }
+
+    if (response.error) {
       this.debug(message);
       this.emit('error', message);
-      return;
     }
-
-    if (message.args[1] === 'LS') {
-      const caps = message.args.at(-1)?.split(/\s+/) ?? [];
-      if (this.opt.sasl && caps.includes('sasl')) {
-        this.send('CAP', 'REQ', 'sasl');
-      } else if (message.args[2] !== '*') {
-        this.send('CAP', 'END');
-      }
-
-      return;
-    }
-
-    // currently only handle ACK sasl responses
-    if (message.args[1] !== 'ACK') {
-      return;
-    }
-
-    const caps = message.args[2].split(/\s+/);
-    if (!caps.includes('sasl')) {
-      return;
-    }
-
-    this.send('AUTHENTICATE', 'PLAIN');
   }
 
   private _handleJoin(message: Message): void {
