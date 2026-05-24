@@ -3,7 +3,7 @@ import { stripColorsAndStyle } from './ircColors.js';
 
 export type Message = {
   args: string[];
-  prefix: string;
+  prefix?: string;
   nick?: string;
   user?: string;
   host?: string;
@@ -63,6 +63,10 @@ function findTrailingStart(line: string): number {
   return -1;
 }
 
+function isKnownCode(rawCommand: string): rawCommand is keyof typeof CODES {
+  return rawCommand in CODES;
+}
+
 /**
  * parseMessage(line, stripColors)
  *
@@ -78,8 +82,11 @@ export function parseMessage(
   stripColors?: boolean,
   enableStrictParse?: boolean,
 ): Message {
-  const message: Partial<Message> = {
+  const message: Message = {
     args: [],
+    command: '',
+    commandType: 'normal',
+    rawCommand: '',
   };
 
   if (stripColors) {
@@ -112,13 +119,13 @@ export function parseMessage(
   // Parse command
   match = /^([^ ]+) */.exec(line);
   const rawCommand = match?.[1] ?? '';
-  message.command = rawCommand.toUpperCase() as CodeNames;
+  message.command = rawCommand.toUpperCase();
   message.rawCommand = rawCommand.toUpperCase();
   message.commandType = 'normal';
   line = line.slice(rawCommand.length).trimStart();
 
-  const codeData = CODES[message.rawCommand as keyof typeof CODES];
-  if (codeData) {
+  if (isKnownCode(message.rawCommand)) {
+    const codeData = CODES[message.rawCommand];
     if ('name' in codeData) {
       message.command = codeData.name;
     }
@@ -143,5 +150,5 @@ export function parseMessage(
     message.args.push(trailing);
   }
 
-  return message as Message;
+  return message;
 }
