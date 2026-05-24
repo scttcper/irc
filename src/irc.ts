@@ -7,7 +7,7 @@ import { TypedEmitter } from 'tiny-typed-emitter';
 
 import { ChannelStore } from './channelStore.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
-import { truncateUtf8, utf8ByteLength } from './ircEncoding.js';
+import { utf8ByteLength } from './ircEncoding.js';
 import {
   applyIsupport,
   defaultChannelModes,
@@ -23,6 +23,7 @@ import {
   type Users,
 } from './ircTypes.js';
 import { LineReader } from './lineReader.js';
+import { splitOutgoingMessage } from './messageSplitter.js';
 import { Message, parseMessage } from './parseMessage.js';
 import { stringToBase64 } from './uint8array.js';
 import { WhoisTracker, type WhoisResult } from './whoisTracker.js';
@@ -395,71 +396,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    text
-      .toString()
-      .split(/\r?\n/)
-      .filter(line => {
-        return line.length > 0;
-      })
-      .forEach(line => {
-        const linesToSend = this._splitLongLines(line, maxLength);
-        linesToSend.forEach(toSend => {
-          this.send(kind, target, toSend);
-          if (kind === 'PRIVMSG') {
-            this.emit('selfMessage', target, toSend);
-          }
-        });
-      });
-  }
-
-  private _splitLongLines(words: string, maxLength = 450, destination: string[] = []): string[] {
-    // If maxLength hasn't been initialized yet, prefer an arbitrarily low line length over crashing.
-    // If no words left, return the accumulated array of splits
-    if (words.length === 0) {
-      return destination;
-    }
-
-    // If the remaining words fit under the byte limit (by utf-8, for Unicode support), push to the accumulator and return
-    if (utf8ByteLength(words) <= maxLength) {
-      destination.push(words);
-      return destination;
-    }
-
-    // else, truncate by utf-8 bytes while preserving full code points
-    const truncatedStr = truncateUtf8(words, maxLength);
-    // and then check for a word boundary to try to keep words together
-    const len = truncatedStr.length - 1;
-    let c = truncatedStr[len];
-    let cutPos = len;
-    let wsLength = 1;
-    if (/\s/.test(c)) {
-      cutPos = len;
-    } else {
-      let offset = 1;
-      while (len - offset > 0) {
-        c = truncatedStr[len - offset];
-        if (/\s/.test(c)) {
-          cutPos = len - offset;
-          break;
-        }
-
-        offset++;
-      }
-
-      if (len - offset <= 0) {
-        cutPos = len;
-        wsLength = 0;
+    for (const toSend of splitOutgoingMessage(text, maxLength)) {
+      this.send(kind, target, toSend);
+      if (kind === 'PRIVMSG') {
+        this.emit('selfMessage', target, toSend);
       }
     }
-
-    // and push the found region to the accumulator, remove from words, split rest of message
-    const part = truncatedStr.slice(0, cutPos);
-    destination.push(part);
-    return this._splitLongLines(
-      words.slice(cutPos + wsLength, words.length),
-      maxLength,
-      destination,
-    );
   }
 
   /**
