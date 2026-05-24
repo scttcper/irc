@@ -32,6 +32,7 @@ import {
 } from './ircTypes.js';
 import { LineReader } from './lineReader.js';
 import { splitOutgoingMessage } from './messageSplitter.js';
+import { NickRecovery } from './nickRecovery.js';
 import { Message, parseMessage } from './parseMessage.js';
 import { WhoisTracker, type WhoisResult } from './whoisTracker.js';
 
@@ -87,17 +88,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     cyclingPingTimer: CyclingPingTimer;
     lineReader: LineReader;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
-    renickInterval?: ReturnType<typeof setInterval>;
     requestedDisconnect?: boolean;
-    attemptedLastRenick?: boolean;
   };
 
   nick = '';
-  nickMod = 0;
   hostMask = '';
   maxLineLength?: number;
   private readonly channelListTracker = new ChannelListTracker();
   private readonly channelStore = new ChannelStore();
+  private readonly nicknameRecovery: NickRecovery;
   private readonly whoisTracker = new WhoisTracker();
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
@@ -130,6 +129,16 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     super();
     this.opt = defaultsdeep({ host, nick }, opt, defaultOptions);
     this.supported.channel.types = this.opt.channelPrefixes;
+    this.nicknameRecovery = new NickRecovery(this.opt, {
+      debug: (...args) => this.debug(...args),
+      getCurrentNick: () => this.nick,
+      requestPreferredNick: nickToRequest => this.send('NICK', nickToRequest),
+      useFallbackNick: fallbackNick => {
+        this.send('NICK', fallbackNick);
+        this.nick = fallbackNick;
+        this._updateMaxLineLength();
+      },
+    });
 
     this.addListener('raw', message => this._handleRawMessage(message));
     this.addListener('kick', (channel: string, n: string) => {
@@ -164,8 +173,17 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.channelListTracker.replace(channels);
   }
 
+  get nickMod(): number {
+    return this.nicknameRecovery.nickMod;
+  }
+
+  set nickMod(value: number) {
+    this.nicknameRecovery.nickMod = value;
+  }
+
   connect(retryCount = 0) {
     this.clearRetryTimeout();
+    this.nicknameRecovery.beginConnection();
     const connection: IrcClient['connection'] = {
       cyclingPingTimer: new CyclingPingTimer(this.opt),
       lineReader: new LineReader(this.opt.encoding),
@@ -440,9 +458,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private cancelAutoRenick(): void {
-    if (this.connection?.renickInterval) {
-      clearInterval(this.connection.renickInterval);
-    }
+    this.nicknameRecovery.cancelAutoRenick();
   }
 
   private _speak(kind: string, target: string, text: string) {
@@ -817,45 +833,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleNicknameinuse(message: Message): void {
-    if (typeof this.nickMod === 'undefined') {
-      this.nickMod = 0;
-    }
-
-    if (
-      message.args[1] === this.opt.nick &&
-      (this.connection.renickInterval || this.connection.attemptedLastRenick)
-    ) {
-      this.debug('Attempted to automatically renick to', message.args[1], 'and found it taken');
-      return;
-    }
-
-    this.nickMod++;
-    this.send('NICK', `${this.opt.nick}${this.nickMod}`);
-    this.nick = `${this.opt.nick}${this.nickMod}`;
-    this._updateMaxLineLength();
-    if (this.opt.autoRenick) {
-      let renickTimes = 0;
-      this.cancelAutoRenick();
-      this.connection.renickInterval = setInterval(() => {
-        if (this.nick === this.opt.nick) {
-          this.debug(
-            'Attempted to automatically renick to',
-            this.nick,
-            'and found that was the current nick',
-          );
-          this.cancelAutoRenick();
-          return;
-        }
-
-        this.send('NICK', this.opt.nick);
-        renickTimes++;
-        if (this.opt.renickCount !== null && renickTimes >= this.opt.renickCount) {
-          this.debug(`Maximum autorenick retry count (${this.opt.renickCount}) reached`);
-          this.cancelAutoRenick();
-          this.connection.attemptedLastRenick = true;
-        }
-      }, this.opt.renickDelay);
-    }
+    this.nicknameRecovery.handleNicknameInUse(message.args[1]);
   }
 
   private _connectionHandler() {
