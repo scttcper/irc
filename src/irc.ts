@@ -5,6 +5,7 @@ import debug from 'debug';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
+import { ChannelStore } from './channelStore.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { truncateUtf8, utf8ByteLength } from './ircEncoding.js';
 import {
@@ -72,6 +73,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   nickMod = 0;
   hostMask = '';
   maxLineLength?: number;
+  private readonly channelStore = new ChannelStore();
   private readonly whoisTracker = new WhoisTracker();
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
@@ -96,7 +98,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   motd?: string;
   modeForPrefix: Record<string, string> = { ...defaultModeForPrefix };
   prefixForMode: Record<string, string> = { ...defaultPrefixForMode };
-  chans: Record<string, ChannelData> = {};
   channellist: ChannelData[] = [];
   private channellistOpen = false;
   retryTimeout?: ReturnType<typeof setTimeout>;
@@ -123,6 +124,14 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this.join(channel);
       }
     });
+  }
+
+  get chans(): Record<string, ChannelData> {
+    return this.channelStore.channels;
+  }
+
+  set chans(channels: Record<string, ChannelData>) {
+    this.channelStore.replace(channels);
   }
 
   connect(retryCount = 0) {
@@ -713,39 +722,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.debug(`NICK: ${message.nick} changes nick to ${message.args[0]}`);
 
-    const channels: string[] = [];
-
-    // Figure out what channels the user is in, update relevant nicks
-    Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (message.nick in chan.users) {
-        chan.users[message.args[0]] = chan.users[message.nick];
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete chan.users[message.nick];
-        channels.push(channame);
-      }
-    });
+    const channels = this.channelStore.renameUser(message.nick, message.args[0]);
 
     // old nick, new nick, channels
     this.emit('nick', message.nick, message.args[0], channels, message);
   }
 
   private _handleNam(message: Message): void {
-    const channel = this.chanData(message.args[2]);
-    if (!channel) {
-      return;
-    }
-
     const users = message.args[3].trim().split(/ +/);
-    users.forEach(user => {
-      const match = /^(.)(.*)$/.exec(user);
-      if (match) {
-        if (match[1] in this.modeForPrefix) {
-          channel.users[match[2]] = match[1];
-        } else {
-          channel.users[match[1] + match[2]] = '';
-        }
-      }
-    });
+    this.channelStore.addNames(message.args[2], users, this.modeForPrefix);
   }
 
   private _handleMode(message: Message): void {
@@ -804,15 +789,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       let modeArg: string;
       if (mode in this.prefixForMode) {
         modeArg = modeArgs.shift();
-        if (Object.hasOwn(channel.users, modeArg)) {
-          if (adding) {
-            if (!channel.users[modeArg].includes(this.prefixForMode[mode])) {
-              channel.users[modeArg] += this.prefixForMode[mode];
-            }
-          } else {
-            channel.users[modeArg] = channel.users[modeArg].replace(this.prefixForMode[mode], '');
-          }
-        }
+        this.channelStore.updateUserPrefix(channel, modeArg, this.prefixForMode[mode], adding);
 
         this.emit(eventName, message.args[0], message.nick, mode, modeArg, message);
       } else if (supported.a.includes(mode)) {
@@ -839,19 +816,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     });
   }
 
-  private chanData(name: string, create = false): ChannelData {
-    const key = name.toLowerCase();
+  private chanData(name: string, create = false): ChannelData | undefined {
     if (create) {
-      this.chans[key] = this.chans[key] ?? {
-        key,
-        serverName: name,
-        users: {},
-        modeParams: {},
-        mode: '',
-      };
+      return this.channelStore.ensure(name);
     }
 
-    return this.chans[key];
+    return this.channelStore.get(name);
   }
 
   private _handleNotice(message: Message): void {
@@ -1020,15 +990,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handlePart(message: Message): void {
     // channel, who, reason
     if (this.nick === message.nick) {
-      const channel = this.chanData(message.args[0]);
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete this.chans[channel.key];
+      this.channelStore.remove(message.args[0]);
     } else {
-      const channel = this.chanData(message.args[0]);
-      if (channel?.users) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[message.nick];
-      }
+      this.channelStore.removeUser(message.args[0], message.nick);
     }
 
     this.emitChannelEvent('part', message.args[0], message.nick, message.args[1]);
@@ -1036,15 +1000,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleKick(message: Message): void {
     if (this.nick === message.args[1]) {
-      const channel = this.chanData(message.args[0]);
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete this.chans[channel.key ?? ''];
+      this.channelStore.remove(message.args[0]);
     } else {
-      const channel = this.chanData(message.args[0]);
-      if (channel?.users) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[message.args[1]];
-      }
+      this.channelStore.removeUser(message.args[0], message.args[1]);
     }
 
     // channel, who, by, reason
@@ -1064,14 +1022,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleKill(message: Message): void {
     const nick = message.args[0];
-    const channels: string[] = [];
-    Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (nick in chan.users) {
-        channels.push(channame);
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete chan.users[nick];
-      }
-    });
+    const channels = this.channelStore.removeUserFromAll(nick);
     this.emit('kill', nick, message.args[1], channels, message);
   }
 
@@ -1102,17 +1053,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return;
     }
 
-    // handle other people quitting
-    const channels: string[] = [];
-
-    // Figure out what channels the user was in
-    Object.entries(this.chans).forEach(([channame, chan]) => {
-      if (message.nick in chan.users) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete chan.users[message.nick];
-        channels.push(channame);
-      }
-    });
+    const channels = this.channelStore.removeUserFromAll(message.nick);
 
     // who, reason, channels
     this.emit('quit', message.nick, message.args[0], channels, message);
@@ -1155,12 +1096,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _handleJoin(message: Message): void {
     // channel, who
     if (this.nick === message.nick) {
-      this.chanData(message.args[0], true);
+      this.channelStore.ensure(message.args[0]);
     } else {
-      const channel = this.chanData(message.args[0]);
-      if (channel?.users) {
-        channel.users[message.nick] = '';
-      }
+      this.channelStore.addUser(message.args[0], message.nick);
     }
 
     this.emitChannelEvent('join', message.args[0], message.nick);
