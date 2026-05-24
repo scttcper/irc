@@ -15,7 +15,7 @@ export type ChannelData = {
   /** Number of visible clients reported by LIST responses. */
   userCount?: number;
   /** Parameters associated with channel modes that carry arguments. */
-  modeParams?: Record<string, any>;
+  modeParams?: Record<string, string[]>;
   /** Current raw channel mode string. */
   mode?: string;
   /** Current channel topic text. */

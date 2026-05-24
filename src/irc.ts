@@ -730,7 +730,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     let adding = true;
     const modeArgs = message.args.slice(2);
     const chanModes = (mode: string, param?: string | string[]) => {
-      const isArr = param && Array.isArray(param);
       if (adding) {
         if (!channel.mode.includes(mode)) {
           channel.mode += mode;
@@ -738,7 +737,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
         if (typeof param === 'undefined') {
           channel.modeParams[mode] = [];
-        } else if (isArr) {
+        } else if (Array.isArray(param)) {
           channel.modeParams[mode] = channel.modeParams[mode]
             ? [...channel.modeParams[mode], ...param]
             : param;
@@ -746,11 +745,11 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
           channel.modeParams[mode] = [param];
         }
       } else if (mode in channel.modeParams) {
-        if (isArr && Array.isArray(channel.modeParams[mode])) {
+        if (Array.isArray(param)) {
           channel.modeParams[mode] = channel.modeParams[mode].filter((v: string) => v !== param[0]);
         }
 
-        if (!isArr || channel.modeParams[mode].length === 0) {
+        if (!Array.isArray(param) || channel.modeParams[mode].length === 0) {
           channel.mode = channel.mode.replace(mode, '');
           // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete channel.modeParams[mode];
