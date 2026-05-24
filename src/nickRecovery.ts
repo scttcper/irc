@@ -30,6 +30,7 @@ export class NickRecovery {
   cancelAutoRenick(): void {
     if (this.renickInterval) {
       clearInterval(this.renickInterval);
+      this.renickInterval = undefined;
     }
   }
 
