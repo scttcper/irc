@@ -6,6 +6,7 @@ import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
 import { ChannelStore } from './channelStore.js';
+import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { utf8ByteLength } from './ircEncoding.js';
 import {
@@ -29,6 +30,14 @@ import { stringToBase64 } from './uint8array.js';
 import { WhoisTracker, type WhoisResult } from './whoisTracker.js';
 
 const log = debug('irc');
+
+type CtcpContext = {
+  from: string;
+  to: string;
+  text: string;
+  type: CtcpType;
+  message: Message;
+};
 
 function containsInvalidLineByte(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
@@ -771,8 +780,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const to: string | undefined = message.args[0] ?? null;
     const text = message.args[1] ?? '';
 
-    if (text.startsWith('\u0001') && text.lastIndexOf('\u0001') > 0) {
-      this._handleCTCP(from, to, text, 'notice', message);
+    if (isCtcpMessage(text)) {
+      this._handleCTCP({ from, to, text, type: 'notice', message });
       return;
     }
 
@@ -783,34 +792,32 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     }
   }
 
-  // eslint-disable-next-line max-params
-  private _handleCTCP(
-    from: string,
-    to: string,
-    text: string,
-    type: 'notice' | 'privmsg',
-    message: Message,
-  ): void {
-    text = text.slice(1);
-    text = text.slice(0, text.indexOf('\u0001'));
-    const parts = text.split(' ');
-    this.emit('ctcp', from, to, text, type, message);
-    this.emit(`ctcp-${type}` as 'ctcp-notice', from, to, text, message);
-    if (type === 'privmsg' && text === 'VERSION') {
+  private _handleCTCP({ from, to, text, type, message }: CtcpContext): void {
+    const ctcp = parseCtcpMessage(text, type);
+    this.emit('ctcp', from, to, ctcp.text, type, message);
+    if (type === 'notice') {
+      this.emit('ctcp-notice', from, to, ctcp.text, message);
+    } else {
+      this.emit('ctcp-privmsg', from, to, ctcp.text, message);
+    }
+
+    if (ctcp.isVersionRequest) {
       this.emit('ctcp-version', from, to, message);
     }
 
-    if (parts[0] === 'ACTION' && parts.length > 1) {
-      this.emit('action', from, to, parts.slice(1).join(' '), message);
+    if (ctcp.isAction) {
+      this.emit('action', from, to, ctcp.params, message);
     }
 
-    if (parts[0] === 'PING' && type === 'privmsg' && parts.length > 1) {
-      this.ctcp(from, 'notice', text);
+    if (ctcp.pingReply) {
+      this.sendCtcp(from, 'notice', ctcp.pingReply);
     }
   }
 
-  private ctcp(to: string, type: 'privmsg' | string, text: string) {
-    return this[type === 'privmsg' ? 'say' : 'notice'](to, `\u0001${text}\u0001`);
+  private sendCtcp(to: string, type: CtcpType, text: string) {
+    return type === 'privmsg'
+      ? this.say(to, formatCtcpMessage(text))
+      : this.notice(to, formatCtcpMessage(text));
   }
 
   private _isChannelTracked(channelName: string): boolean {
@@ -972,8 +979,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const from = message.nick;
     const to = message.args[0];
     const text = message.args[1] ?? '';
-    if (text.startsWith('\u0001') && text.lastIndexOf('\u0001') > 0) {
-      this._handleCTCP(from, to, text, 'privmsg', message);
+    if (isCtcpMessage(text)) {
+      this._handleCTCP({ from, to, text, type: 'privmsg', message });
       return;
     }
 
