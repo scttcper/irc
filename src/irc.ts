@@ -12,7 +12,6 @@ import { ChannelStore } from './channelStore.js';
 import { getConnectionRegistrationCommands } from './connectionRegistration.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
-import { utf8ByteLength } from './ircEncoding.js';
 import {
   applyIsupport,
   defaultChannelModes,
@@ -20,6 +19,7 @@ import {
   defaultModeForPrefix,
   defaultPrefixForMode,
 } from './ircIsupport.js';
+import { formatIrcMessage } from './ircMessageFormatter.js';
 import { defaultOptions, type IrcOptions } from './ircOptions.js';
 import {
   type ChannelData,
@@ -49,32 +49,6 @@ type ChannelEventArgs = {
   names: [users: Users];
   part: [nick: string, reason: string];
 };
-
-function containsInvalidLineByte(value: string): boolean {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if (code === 0 || code === 10 || code === 13) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function mustBeTrailingParam(value: string): boolean {
-  if (value === '' || value.charCodeAt(0) === 58) {
-    return true;
-  }
-
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if (code === 32 || code === 9 || code === 11 || code === 12) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 export type { ChannelData } from './ircTypes.js';
 export type { IrcOptions } from './ircOptions.js';
@@ -337,31 +311,21 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // e.g. NICK, nickname
     // IRC messages are single CRLF-delimited lines capped at 512 bytes.
     // https://modern.ircdocs.horse/#message-format
-    for (const arg of args) {
-      if (containsInvalidLineByte(arg)) {
-        throw new Error('IRC message parameters cannot contain NUL, CR, or LF characters');
-      }
-    }
-
-    // if the last arg contains a space, starts with a colon, or is empty, prepend a colon
-    if (mustBeTrailingParam(args[args.length - 1])) {
-      args[args.length - 1] = `:${args[args.length - 1]}`;
-    }
+    const message = formatIrcMessage(args);
 
     if (!this.connection?.socket) {
       throw new Error('Cannot send before connecting');
     }
 
     if (this.connection.requestedDisconnect) {
-      this.debug('(Disconnected) SEND:', args.join(' '));
+      this.debug('(Disconnected) SEND:', message.params.join(' '));
     } else {
-      const line = `${args.join(' ')}\r\n`;
-      if (utf8ByteLength(line) > 512) {
+      if (message.byteLength > 512) {
         throw new Error('IRC messages cannot exceed 512 bytes including CRLF');
       }
 
-      this.debug('SEND:', args.join(' '));
-      this.connection.socket.write(line);
+      this.debug('SEND:', message.params.join(' '));
+      this.connection.socket.write(message.line);
     }
   }
 
