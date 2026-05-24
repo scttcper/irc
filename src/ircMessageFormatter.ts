@@ -3,7 +3,7 @@ import { utf8ByteLength } from './ircEncoding.js';
 export type FormattedIrcMessage = {
   byteLength: number;
   line: string;
-  params: string[];
+  params: readonly string[];
 };
 
 function containsInvalidLineByte(value: string): boolean {
@@ -33,17 +33,18 @@ function mustBeTrailingParam(value: string): boolean {
 }
 
 export function formatIrcMessage(args: readonly string[]): FormattedIrcMessage {
-  const params = [...args];
-
-  for (const arg of params) {
+  for (const arg of args) {
     if (containsInvalidLineByte(arg)) {
       throw new Error('IRC message parameters cannot contain NUL, CR, or LF characters');
     }
   }
 
+  let params: readonly string[] = args;
   const lastParamIndex = params.length - 1;
-  if (mustBeTrailingParam(params[lastParamIndex])) {
-    params[lastParamIndex] = `:${params[lastParamIndex]}`;
+  if (mustBeTrailingParam(args[lastParamIndex])) {
+    const formattedParams = [...args];
+    formattedParams[lastParamIndex] = `:${formattedParams[lastParamIndex]}`;
+    params = formattedParams;
   }
 
   const line = `${params.join(' ')}\r\n`;

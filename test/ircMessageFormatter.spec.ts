@@ -11,6 +11,10 @@ describe('formatIrcMessage', () => {
     });
   });
 
+  it('counts utf-8 bytes without assuming one byte per character', () => {
+    expect(formatIrcMessage(['PRIVMSG', '#c', '😀']).byteLength).toBe(17);
+  });
+
   it('marks params with spaces, leading colons, or empty strings as trailing params', () => {
     expect(formatIrcMessage(['PRIVMSG', '#test', 'hello there']).line).toBe(
       'PRIVMSG #test :hello there\r\n',

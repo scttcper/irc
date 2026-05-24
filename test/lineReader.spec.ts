@@ -16,6 +16,12 @@ it('processes complete lines before a later partial line completes', () => {
   expect(reader.read(' testbot :hello\r\n')).toEqual([':server NOTICE testbot :hello']);
 });
 
+it('skips blank lines', () => {
+  const reader = new LineReader(null);
+
+  expect(reader.read('\r\nPING :one\r\n\n')).toEqual(['PING :one']);
+});
+
 it('preserves utf-8 byte sequences split across chunks', () => {
   const reader = new LineReader(null);
   const bytes = new TextEncoder().encode(
