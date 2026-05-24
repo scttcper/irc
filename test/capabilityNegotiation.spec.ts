@@ -4,6 +4,7 @@ import {
   getCapabilityRegistrationCommands,
   getSaslPlainAuthenticateChunks,
   handleCapMessage,
+  handleSaslMessage,
 } from '../src/capabilityNegotiation.js';
 import { parseMessage } from '../src/parseMessage.js';
 
@@ -34,6 +35,24 @@ it('starts SASL PLAIN after sasl ACK', () => {
   expect(handleCapMessage(parseMessage(':server CAP * ACK :sasl'), true)).toEqual({
     commands: [['AUTHENTICATE', 'PLAIN']],
     error: false,
+  });
+});
+
+it('ends CAP negotiation after SASL succeeds', () => {
+  expect(
+    handleSaslMessage(parseMessage(':server 903 testbot :SASL authentication successful')),
+  ).toEqual({
+    commands: [['CAP', 'END']],
+    error: false,
+  });
+});
+
+it('ends CAP negotiation and marks SASL failures as errors', () => {
+  expect(
+    handleSaslMessage(parseMessage(':server 904 testbot :SASL authentication failed')),
+  ).toEqual({
+    commands: [['CAP', 'END']],
+    error: true,
   });
 });
 

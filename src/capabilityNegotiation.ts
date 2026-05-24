@@ -41,6 +41,26 @@ export function handleCapMessage(message: Message, sasl: boolean): CapResponse {
   return { commands: [['AUTHENTICATE', 'PLAIN']], error: false };
 }
 
+export function handleSaslMessage(message: Pick<Message, 'command'>): CapResponse {
+  switch (message.command) {
+    case 'rpl_loggedin': {
+      return { commands: [], error: false };
+    }
+    case 'rpl_saslsuccess': {
+      return { commands: [['CAP', 'END']], error: false };
+    }
+    case 'err_saslfail':
+    case 'err_sasltoolong':
+    case 'err_saslaborted':
+    case 'err_saslalready': {
+      return { commands: [['CAP', 'END']], error: true };
+    }
+    default: {
+      return { commands: [], error: false };
+    }
+  }
+}
+
 export function getSaslPlainAuthenticateChunks(
   options: Pick<IrcOptions, 'nick' | 'password' | 'userName'>,
 ): string[] {

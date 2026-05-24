@@ -5,7 +5,11 @@ import debug from 'debug';
 import defaultsdeep from 'lodash.defaultsdeep';
 import { TypedEmitter } from 'tiny-typed-emitter';
 
-import { getSaslPlainAuthenticateChunks, handleCapMessage } from './capabilityNegotiation.js';
+import {
+  getSaslPlainAuthenticateChunks,
+  handleCapMessage,
+  handleSaslMessage,
+} from './capabilityNegotiation.js';
 import { ChannelListTracker } from './channelListTracker.js';
 import { applyChannelModeChange, applyChannelModeSnapshot } from './channelModes.js';
 import { ChannelStore } from './channelStore.js';
@@ -626,20 +630,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         this._handleAuthenticate(message);
         break;
       }
-      case 'rpl_loggedin': {
-        break;
-      }
-      case 'rpl_saslsuccess': {
-        this.send('CAP', 'END');
-        break;
-      }
+      case 'rpl_loggedin':
+      case 'rpl_saslsuccess':
       case 'err_saslfail':
       case 'err_sasltoolong':
       case 'err_saslaborted':
       case 'err_saslalready': {
-        this.send('CAP', 'END');
-        this.debug(message);
-        this.emit('error', message);
+        this._handleSasl(message);
         break;
       }
       case 'err_umodeunknownflag': {
@@ -890,6 +887,18 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleCap(message: Message): void {
     const response = handleCapMessage(message, this.opt.sasl);
+    for (const command of response.commands) {
+      this.send(...command);
+    }
+
+    if (response.error) {
+      this.debug(message);
+      this.emit('error', message);
+    }
+  }
+
+  private _handleSasl(message: Message): void {
+    const response = handleSaslMessage(message);
     for (const command of response.commands) {
       this.send(...command);
     }
