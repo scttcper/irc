@@ -5,6 +5,19 @@ import { IrcClient } from '../src/irc.js';
 import { setupMockClient } from './helpers.js';
 
 describe('user events', () => {
+  it.each(['#test', '&local'])('emits the channel message event for %s', channel => {
+    const client = setupMockClient('testbot');
+    const listener = vi.fn();
+    client.on(`message${channel}`, listener);
+    client.handleData(`:friend!u@h PRIVMSG ${channel.toUpperCase()} :hello\r\n`);
+    expect(listener).toHaveBeenCalledExactlyOnceWith(
+      'friend',
+      channel.toUpperCase(),
+      'hello',
+      expect.objectContaining({ command: 'PRIVMSG' }),
+    );
+  });
+
   it('emits events per fixtures', () => {
     const client = setupMockClient('testbot');
 

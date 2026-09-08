@@ -64,9 +64,9 @@ client.say('nonbeliever', 'sup');
 With typescript 4.1 template strings feature events can be fully typed.
 
 ```ts
-// (from, message) parameters are typed via template strings matching `message#${string}`
-client.addListener('message#yourchannel', (from, message) => {
-  console.log(from + ' => #yourchannel: ' + message);
+// Channel message parameters are typed via template strings matching `message${string}`
+client.addListener('message#yourchannel', (from, to, text) => {
+  console.log(from + ' => ' + to + ': ' + text);
 });
 ```
 

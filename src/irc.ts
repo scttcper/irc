@@ -857,7 +857,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit(`message#${to.toLowerCase()}` as `message#${string}`, from, to, text, message);
+      this.emit(`message${to.toLowerCase()}`, from, to, text, message);
     }
 
     if (to.toUpperCase() === this.nick.toUpperCase()) {

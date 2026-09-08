@@ -56,7 +56,7 @@ export type SupportedFeatures = {
 };
 
 export type OnMessage = (nick: string, to: string, text: string, message: Message) => void;
-export type Messages = Record<`message#${string}`, OnMessage>;
+export type Messages = Record<`message${string}`, OnMessage>;
 
 export interface IrcClientEvents extends Messages {
   raw: (message: Message) => void;
