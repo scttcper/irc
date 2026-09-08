@@ -222,3 +222,36 @@ describe('user events', () => {
     );
   });
 });
+
+it('does not rejoin parted configured or runtime channels after MOTD', () => {
+  const channels = ['#initial secret', '#keep'];
+  const client = setupMockClient('bot', { channels });
+  client.join('#runtime');
+  client.handleData(':bot!u@h JOIN #runtime\r\n');
+  client.part('#INITIAL,#runtime');
+  client.handleData(':bot!u@h PART #initial\r\n:bot!u@h PART #runtime\r\n');
+  vi.mocked(client.connection.socket.write).mockClear();
+  client.handleData(':server 422 bot :No MOTD\r\n');
+  expect(client.connection.socket.write).toHaveBeenCalledExactlyOnceWith('JOIN #keep\r\n');
+  expect(client.opt.channels).toEqual(channels);
+});
+
+it('cancels pending join tracking when explicitly parting before the acknowledgement', () => {
+  const client = setupMockClient('bot');
+  client.join('#test');
+  client.part('#test');
+  client.handleData(':bot!u@h JOIN #test\r\n');
+  vi.mocked(client.connection.socket.write).mockClear();
+  client.handleData(':server 422 bot :No MOTD\r\n');
+  expect(client.connection.socket.write).not.toHaveBeenCalled();
+});
+
+it('can explicitly rejoin a channel while its earlier PART is being acknowledged', () => {
+  const client = setupMockClient('bot', { channels: ['#test'] });
+  client.part('#test');
+  client.join('#test');
+  client.handleData(':bot!u@h PART #test\r\n:bot!u@h JOIN #test\r\n');
+  vi.mocked(client.connection.socket.write).mockClear();
+  client.handleData(':server 422 bot :No MOTD\r\n');
+  expect(client.connection.socket.write).toHaveBeenCalledExactlyOnceWith('JOIN #test\r\n');
+});

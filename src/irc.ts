@@ -81,14 +81,15 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   modeForPrefix: Record<string, string> = { ...defaultModeForPrefix };
   prefixForMode: Record<string, string> = { ...defaultPrefixForMode };
   retryTimeout?: ReturnType<typeof setTimeout>;
-  /** Channels joined at runtime, tracked separately from the initial options. */
+  /** Desired channels, retained across connections without modifying the initial options. */
   private _autoJoinChannels: string[] = [];
-  private readonly pendingJoins = new Set<(channel: string, nick: string) => void>();
+  private readonly pendingJoins = new Map<(channel: string, nick: string) => void, string>();
 
   constructor(host: string, nick: string, opt: Partial<IrcOptions> = {}) {
     super();
     this.opt = defaultsdeep({ host, nick }, opt, defaultOptions);
     this.supported.channel.types = this.opt.channelPrefixes;
+    this._autoJoinChannels = [...this.opt.channels];
     this.nicknameRecovery = new NickRecovery(
       this.opt,
       {
@@ -107,17 +108,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.addListener('raw', message => this._handleRawMessage(message));
     this.addListener('kick', (channel: string, n: string) => {
       if (this.opt.autoRejoin && this.casefold(n) === this.casefold(this.nick)) {
-        const target = [...this.opt.channels, ...this._autoJoinChannels].find(
+        const target = this._autoJoinChannels.find(
           entry => this.casefold(entry.split(' ')[0]) === this.casefold(channel),
         );
         this.join(target ?? channel);
       }
     });
     this.addListener('motd', () => {
-      for (const channel of this.opt.channels) {
-        this.join(channel);
-      }
-
       for (const channel of this._autoJoinChannels) {
         this.join(channel);
       }
@@ -268,7 +265,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
     };
     this.addListener('join', onJoin);
-    this.pendingJoins.add(onJoin);
+    this.pendingJoins.set(onJoin, channelName);
 
     try {
       this.send('JOIN', ...params);
@@ -281,6 +278,22 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   part(channel: string) {
     this.send('PART', channel);
+    for (const name of channel.split(',')) {
+      this.forgetChannel(name);
+    }
+  }
+
+  private forgetChannel(channel: string): void {
+    const normalized = this.casefold(channel);
+    this._autoJoinChannels = this._autoJoinChannels.filter(
+      entry => this.casefold(entry.split(' ')[0]) !== normalized,
+    );
+    for (const [listener, name] of this.pendingJoins) {
+      if (this.casefold(name) === normalized) {
+        this.removeListener('join', listener);
+        this.pendingJoins.delete(listener);
+      }
+    }
   }
 
   say(target: string, text: string) {
@@ -394,7 +407,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.motd = undefined;
     this.hostMask = '';
     this.maxLineLength = undefined;
-    for (const listener of this.pendingJoins) {
+    for (const listener of this.pendingJoins.keys()) {
       this.removeListener('join', listener);
     }
     this.pendingJoins.clear();
@@ -827,13 +840,6 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _isChannelTracked(channelName: string): boolean {
     const lower = this.casefold(channelName);
-    const inOpt = this.opt.channels.some(entry => {
-      return this.casefold(entry.split(' ')[0]) === lower;
-    });
-    if (inOpt) {
-      return true;
-    }
-
     return this._autoJoinChannels.some(name => this.casefold(name.split(' ')[0]) === lower);
   }
 
@@ -875,6 +881,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // channel, who, reason
     if (this.casefold(this.nick) === this.casefold(message.nick)) {
       this.channelStore.remove(message.args[0]);
+      const rejoining = [...this.pendingJoins.values()].some(
+        name => this.casefold(name) === this.casefold(message.args[0]),
+      );
+      if (!rejoining) {
+        this.forgetChannel(message.args[0]);
+      }
     } else {
       this.channelStore.removeUser(message.args[0], message.nick);
     }
