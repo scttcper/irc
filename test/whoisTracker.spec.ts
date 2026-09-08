@@ -4,6 +4,28 @@ import { parseMessage } from '../src/parseMessage.js';
 import { WhoisTracker } from '../src/whoisTracker.js';
 
 describe('whois tracker', () => {
+  it.each(['__proto__', 'constructor', 'toString'])(
+    'treats %s as a nickname without modifying inherited objects',
+    async nick => {
+      const tracker = new WhoisTracker();
+      const request = tracker.request(nick);
+      const prototype = Object.getOwnPropertyDescriptors(Object.prototype);
+
+      tracker.handleMessage(parseMessage(`:server 311 bot ${nick} user host * :Real Name`));
+      const result = tracker.handleMessage(parseMessage(`:server 318 bot ${nick} :End`));
+
+      await expect(request.promise).resolves.toEqual({
+        nick,
+        user: 'user',
+        host: 'host',
+        realname: 'Real Name',
+      });
+      expect(result).not.toBe(Object.prototype);
+      expect(result).not.toBe(Object);
+      expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(prototype);
+    },
+  );
+
   it('handles who replies that do not include a hopcount prefix in the realname field', async () => {
     const tracker = new WhoisTracker();
     const request = tracker.request('friend');

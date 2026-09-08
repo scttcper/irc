@@ -12,7 +12,7 @@ type PendingWhoisRequest = {
 const defaultWhoisTimeoutMs = 30_000;
 
 export class WhoisTracker {
-  readonly data: Record<string, WhoIsData> = {};
+  readonly data: Record<string, WhoIsData> = Object.create(null);
   private readonly pending = new Map<string, Set<PendingWhoisRequest>>();
   private readonly timeoutMs: number;
 
