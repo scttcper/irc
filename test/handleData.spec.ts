@@ -1,3 +1,5 @@
+import { setImmediate } from 'node:timers/promises';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { setupMockClient } from './helpers.js';
@@ -30,6 +32,31 @@ PING :EAA41EAE
 |chunk|`;
 
 describe('handle data', () => {
+  it('does not restore an old nick when welcome WHOIS completes asynchronously', async () => {
+    const client = setupMockClient('testbot');
+    client.handleData(
+      ':server 001 testbot :Welcome testbot!u@h\r\n' +
+        ':server 311 testbot testbot u h * :Bot\r\n' +
+        ':server 318 testbot testbot :End\r\n' +
+        ':testbot!u@h NICK newbot\r\n',
+    );
+    await setImmediate();
+    expect(client.nick).toBe('newbot');
+  });
+
+  it('ignores welcome WHOIS results from a replaced connection', async () => {
+    const client = setupMockClient('testbot');
+    client.handleData(
+      ':server 001 testbot :Welcome testbot!u@h\r\n' +
+        ':server 311 testbot testbot u h * :Bot\r\n' +
+        ':server 318 testbot testbot :End\r\n',
+    );
+    client.connection = { ...client.connection };
+    client.hostMask = 'new@host';
+    await setImmediate();
+    expect(client.hostMask).toBe('new@host');
+  });
+
   it('keeps multiline CAP advertisements isolated between clients', () => {
     const client = setupMockClient('testbot', { sasl: true });
     const other = setupMockClient('other', { sasl: true });

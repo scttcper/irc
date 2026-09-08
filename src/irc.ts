@@ -465,6 +465,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // Set nick to whatever the server decided it really is
     // (normally this is because you chose something too long and the server has shortened it)
     this.nick = message.args[0];
+    const registeredNick = this.nick;
+    const connection = this.connection;
     // Note our hostmask to use it in splitting long messages
     // We don't send our hostmask when issuing PRIVMSGs or NOTICEs, but servers on the other side will include it in messages and will truncate what we send accordingly
     const welcomeStringWords = message.args[1].split(/\s+/);
@@ -475,10 +477,18 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // https://modern.ircdocs.horse/#connection-registration
     this.connection.cyclingPingTimer.start();
     this.emit('registered', message);
-    const res = await this.whois(this.nick);
-    this.nick = res.nick ?? '';
-    this.hostMask = `${res.user}@${res.host}`;
-    this._updateMaxLineLength();
+    const res = await this.whois(registeredNick);
+    if (
+      connection !== this.connection ||
+      connection.requestedDisconnect ||
+      this.nick !== registeredNick
+    ) {
+      return;
+    }
+    if (typeof res.user === 'string' && typeof res.host === 'string') {
+      this.hostMask = `${res.user}@${res.host}`;
+      this._updateMaxLineLength();
+    }
   }
 
   private _handleRawMessage(message: Message): void {
