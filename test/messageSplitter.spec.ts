@@ -23,3 +23,17 @@ it('rejects impossible split budgets', () => {
     'IRC message split length must be greater than 0 bytes',
   );
 });
+
+it.each([1, 2, 3])('rejects a %i-byte budget that cannot fit an emoji', budget => {
+  expect(() => splitOutgoingMessage('😀', budget)).toThrow('cannot fit the next UTF-8 character');
+  expect(() => splitOutgoingMessage('abcd😀', budget)).toThrow(
+    'cannot fit the next UTF-8 character',
+  );
+});
+
+it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+  'rejects non-finite split budgets',
+  budget => {
+    expect(() => splitOutgoingMessage('hello', budget)).toThrow('split length');
+  },
+);

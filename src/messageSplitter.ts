@@ -1,7 +1,7 @@
 import { truncateUtf8, utf8ByteLength } from './ircEncoding.js';
 
 export function splitOutgoingMessage(text: string, maxBytes: number): string[] {
-  if (maxBytes <= 0) {
+  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
     throw new Error('IRC message split length must be greater than 0 bytes');
   }
 
@@ -28,6 +28,9 @@ function splitLongLine(line: string, maxBytes: number): string[] {
     }
 
     const truncated = truncateUtf8(remaining, maxBytes);
+    if (truncated.length === 0) {
+      throw new Error('IRC message split length cannot fit the next UTF-8 character');
+    }
     const splitAt = findSplitPosition(truncated);
     messages.push(truncated.slice(0, splitAt.end));
     remaining = remaining.slice(splitAt.nextStart);
