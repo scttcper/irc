@@ -1,10 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { IrcClient } from '../src/irc.js';
+import { parseMessage } from '../src/parseMessage.js';
 
 import { setupMockClient } from './helpers.js';
 
 describe('user events', () => {
+  it.each(['say', 'notice'] as const)(
+    'keeps Unicode %s messages within wire and relay limits',
+    method => {
+      const client = setupMockClient('bot');
+      client.hostMask = `${'用户'.repeat(20)}@主机.example`;
+      client.handleData(':bot!u@h NICK 昵称\r\n');
+      const target = `#${'日'.repeat(60)}`;
+      const text = '😀'.repeat(200);
+      client[method](target, text);
+      const lines = vi
+        .mocked(client.connection.socket.write)
+        .mock.calls.map(call => String(call[0]));
+      expect(lines.length).toBeGreaterThan(1);
+      for (const line of lines) {
+        expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(512);
+        expect(
+          new TextEncoder().encode(`:${client.nick}!${client.hostMask} ${line}`).length,
+        ).toBeLessThanOrEqual(512);
+      }
+      expect(lines.map(line => parseMessage(line.trimEnd()).args[1]).join('')).toBe(text);
+    },
+  );
+
   it('joins keyed channels and retains their keys for reconnects and kicks', () => {
     const client = setupMockClient('testbot', { autoRejoin: true });
     client.join('#locked secret');

@@ -17,6 +17,7 @@ import { getConnectionRegistrationCommands } from './connectionRegistration.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import { ircCasefold } from './ircCasefold.js';
+import { utf8ByteLength } from './ircEncoding.js';
 import {
   applyIsupport,
   createSupportedFeatures,
@@ -450,7 +451,11 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _speak(kind: string, target: string, text: string) {
     const maxLineLength = this.maxLineLength ?? 450;
-    const maxLength = Math.min(maxLineLength - target.length, this.opt.messageSplit);
+    const maxLength = Math.min(
+      maxLineLength - utf8ByteLength(target),
+      512 - utf8ByteLength(`${kind} ${target} :\r\n`),
+      this.opt.messageSplit,
+    );
     if (typeof text === 'undefined') {
       return;
     }
@@ -475,7 +480,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // Note our hostmask to use it in splitting long messages
     // We don't send our hostmask when issuing PRIVMSGs or NOTICEs, but servers on the other side will include it in messages and will truncate what we send accordingly
     const welcomeStringWords = message.args[1].split(/\s+/);
-    this.hostMask = welcomeStringWords[welcomeStringWords.length - 1];
+    this.hostMask = welcomeStringWords[welcomeStringWords.length - 1].replace(/^[^!]+!/, '');
     this._updateMaxLineLength();
     // Clients must answer server PINGs during registration, but only start
     // client-initiated keepalives after registration completes.
@@ -853,7 +858,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private _updateMaxLineLength() {
     // 497 = 510 - (":" + "!" + " PRIVMSG " + " :").length;
     // target is determined in _speak() and subtracted there
-    this.maxLineLength = 497 - this.nick.length - this.hostMask.length;
+    this.maxLineLength = 497 - utf8ByteLength(this.nick) - utf8ByteLength(this.hostMask);
   }
 
   private _handleAuthenticate(message: Message): void {
