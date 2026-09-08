@@ -19,6 +19,7 @@ interface Ping {
  * When a pingTimeout occurs, the object will go into the 'stopped' state.
  */
 export class CyclingPingTimer extends TypedEmitter<Ping> {
+  private started = false;
   loopingTimeout?: ReturnType<typeof setTimeout>;
   pingWaitTimeout?: ReturnType<typeof setTimeout>;
   private readonly options: Pick<
@@ -46,12 +47,16 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   }
 
   notifyOfActivity() {
-    this.stop();
-    this.start();
+    if (this.started) {
+      this.start();
+    }
   }
 
   start() {
+    this.started = true;
     clearTimeout(this.loopingTimeout);
+    clearTimeout(this.pingWaitTimeout);
+    this.pingWaitTimeout = undefined;
     this.loopingTimeout = setTimeout(() => {
       this.loopingTimeout = undefined;
       this.emit('wantPing');
@@ -59,7 +64,10 @@ export class CyclingPingTimer extends TypedEmitter<Ping> {
   }
 
   stop() {
+    this.started = false;
     clearTimeout(this.loopingTimeout);
     clearTimeout(this.pingWaitTimeout);
+    this.loopingTimeout = undefined;
+    this.pingWaitTimeout = undefined;
   }
 }

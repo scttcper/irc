@@ -25,6 +25,35 @@ it('starts', () => {
   expect(cyclingPingTimer.loopingTimeout).toBeTruthy();
 });
 
+it('does not start keepalives when activity arrives before registration', () => {
+  const emitSpy = setup();
+  cyclingPingTimer.notifyOfActivity();
+  vi.advanceTimersByTime(1000);
+  expect(emitSpy).not.toHaveBeenCalled();
+  expect(cyclingPingTimer.loopingTimeout).toBeUndefined();
+});
+
+it('does not restart after stopping when more activity arrives', () => {
+  const emitSpy = setup();
+  cyclingPingTimer.start();
+  cyclingPingTimer.stop();
+  cyclingPingTimer.notifyOfActivity();
+  vi.advanceTimersByTime(1000);
+  expect(emitSpy).not.toHaveBeenCalled();
+});
+
+it('cancels the response deadline when activity arrives after a ping', () => {
+  const emitSpy = setup();
+  cyclingPingTimer.start();
+  vi.advanceTimersByTime(200);
+  vi.advanceTimersByTime(400);
+  cyclingPingTimer.notifyOfActivity();
+  vi.advanceTimersByTime(150);
+  expect(emitSpy.mock.calls).toEqual([['wantPing']]);
+  vi.advanceTimersByTime(50);
+  expect(emitSpy.mock.calls).toEqual([['wantPing'], ['wantPing']]);
+});
+
 it('stops', () => {
   setup();
   cyclingPingTimer.start();
