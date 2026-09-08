@@ -100,3 +100,17 @@ it('applies channel mode snapshots using only parameterized modes', () => {
     l: ['10'],
   });
 });
+
+it('removes parameterless modes learned from a snapshot', () => {
+  const chan = channel();
+  applyChannelModeSnapshot({ channel: chan, modes: '+mnt', modeArgs: [], supported });
+  applyChannelModeChange({
+    channel: chan,
+    modes: '-mt',
+    modeArgs: [],
+    prefixForMode: {},
+    supported,
+  });
+  expect(chan.mode).toBe('+n');
+  expect(chan.modeParams).toEqual({});
+});

@@ -113,12 +113,8 @@ function updateChannelMode(
     return;
   }
 
-  if (!(mode in channel.modeParams)) {
-    return;
-  }
-
   if (Array.isArray(param)) {
-    channel.modeParams[mode] = channel.modeParams[mode].filter(value => value !== param[0]);
+    channel.modeParams[mode] = (channel.modeParams[mode] ?? []).filter(value => value !== param[0]);
   }
 
   if (!Array.isArray(param) || channel.modeParams[mode].length === 0) {
