@@ -37,3 +37,29 @@ it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     expect(() => splitOutgoingMessage('hello', budget)).toThrow('split length');
   },
 );
+
+it.each([
+  ['a bcd😀x', 5, ['a', 'bcd', '😀x']],
+  ['ab cd efgh', 5, ['ab', 'cd', 'efgh']],
+  ['aa  b', 3, ['aa', ' b']],
+  ['one\ttwo\tthree', 8, ['one\ttwo', 'three']],
+  ['éé éé', 5, ['éé', 'éé']],
+] as const)('preserves word boundaries for %s', (text, budget, expected) => {
+  expect(splitOutgoingMessage(text, budget)).toEqual(expected);
+});
+
+it('handles more chunks than a spread call can accept', () => {
+  const text = 'x'.repeat(200_000);
+  const messages = splitOutgoingMessage(text, 1);
+  expect(messages).toHaveLength(text.length);
+  expect(messages.join('')).toBe(text);
+});
+
+it('preserves large Unicode input while respecting each chunk budget', () => {
+  const text = 'aé日😀'.repeat(10_000);
+  const messages = splitOutgoingMessage(text, 399);
+  expect(messages.join('')).toBe(text);
+  for (const message of messages) {
+    expect(new TextEncoder().encode(message).length).toBeLessThanOrEqual(399);
+  }
+});
