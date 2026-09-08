@@ -73,6 +73,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private readonly channelStore = new ChannelStore();
   private readonly nicknameRecovery: NickRecovery;
   private readonly whoisTracker = new WhoisTracker();
+  private readonly advertisedCapabilities = new Map<string, string | undefined>();
   // Features supported by the server
   // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
   // ISUPPORT defaults: https://modern.ircdocs.horse/#feature-advertisement
@@ -150,6 +151,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   connect(retryCount = 0) {
     this.clearRetryTimeout();
+    this.advertisedCapabilities.clear();
     this.nicknameRecovery.beginConnection();
     const connection: IrcClient['connection'] = {
       cyclingPingTimer: new CyclingPingTimer(this.opt),
@@ -878,7 +880,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleCap(message: Message): void {
-    const response = handleCapMessage(message, this.opt.sasl);
+    const response = handleCapMessage(message, this.opt.sasl, this.advertisedCapabilities);
     for (const command of response.commands) {
       this.send(...command);
     }

@@ -30,6 +30,17 @@ PING :EAA41EAE
 |chunk|`;
 
 describe('handle data', () => {
+  it('keeps multiline CAP advertisements isolated between clients', () => {
+    const client = setupMockClient('testbot', { sasl: true });
+    const other = setupMockClient('other', { sasl: true });
+    client.handleData(':server CAP * LS * :sasl=PLAIN,EXTERNAL\r\n');
+    expect(client.connection.socket.write).not.toHaveBeenCalled();
+    other.handleData(':server CAP * LS :multi-prefix\r\n');
+    client.handleData(':server CAP * LS :multi-prefix\r\n');
+    expect(other.connection.socket.write).toHaveBeenCalledWith('CAP END\r\n');
+    expect(client.connection.socket.write).toHaveBeenCalledExactlyOnceWith('CAP REQ sasl\r\n');
+  });
+
   it('uses modern registration ordering for CAP, PASS, NICK, and USER', () => {
     const client = setupMockClient('testbot', {
       password: 'secret',

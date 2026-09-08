@@ -13,20 +13,39 @@ export function getCapabilityRegistrationCommands(sasl: boolean): IrcCommand[] {
   return sasl ? [['CAP', 'LS', '302']] : [];
 }
 
-export function handleCapMessage(message: Message, sasl: boolean): CapResponse {
+export function handleCapMessage(
+  message: Message,
+  sasl: boolean,
+  advertised = new Map<string, string | undefined>(),
+): CapResponse {
   if (message.args[1] === 'NAK') {
+    advertised.clear();
     return { commands: [['CAP', 'END']], error: true };
   }
 
   if (message.args[1] === 'LS') {
     const caps = message.args.at(-1)?.split(/\s+/) ?? [];
-    if (sasl && caps.includes('sasl')) {
-      return { commands: [['CAP', 'REQ', 'sasl']], error: false };
+    for (const cap of caps) {
+      const separator = cap.indexOf('=');
+      advertised.set(
+        separator === -1 ? cap : cap.slice(0, separator),
+        separator === -1 ? undefined : cap.slice(separator + 1),
+      );
     }
 
-    if (message.args[2] !== '*') {
-      return { commands: [['CAP', 'END']], error: false };
+    if (message.args[2] === '*') {
+      return { commands: [], error: false };
     }
+
+    const mechanisms = advertised.get('sasl');
+    const supportsPlain =
+      advertised.has('sasl') &&
+      (mechanisms === undefined || mechanisms.split(',').includes('PLAIN'));
+    advertised.clear();
+    return {
+      commands: sasl && supportsPlain ? [['CAP', 'REQ', 'sasl']] : [['CAP', 'END']],
+      error: false,
+    };
   }
 
   if (message.args[1] !== 'ACK') {

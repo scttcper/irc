@@ -20,6 +20,28 @@ it('requests SASL when the server advertises it', () => {
   });
 });
 
+it('recognizes SASL mechanism values', () => {
+  expect(handleCapMessage(parseMessage('CAP * LS :sasl=PLAIN,EXTERNAL'), true).commands).toEqual([
+    ['CAP', 'REQ', 'sasl'],
+  ]);
+  expect(handleCapMessage(parseMessage('CAP * LS :sasl=EXTERNAL'), true).commands).toEqual([
+    ['CAP', 'END'],
+  ]);
+});
+
+it('waits for all CAP LS lines and clears advertisements after processing', () => {
+  const advertised = new Map<string, string | undefined>();
+  expect(
+    handleCapMessage(parseMessage('CAP * LS * :sasl=PLAIN'), true, advertised).commands,
+  ).toEqual([]);
+  expect(
+    handleCapMessage(parseMessage('CAP * LS :multi-prefix'), true, advertised).commands,
+  ).toEqual([['CAP', 'REQ', 'sasl']]);
+  expect(
+    handleCapMessage(parseMessage('CAP * LS :multi-prefix'), true, advertised).commands,
+  ).toEqual([['CAP', 'END']]);
+});
+
 it('ends CAP negotiation when SASL is unavailable or rejected', () => {
   expect(handleCapMessage(parseMessage(':server CAP * LS :multi-prefix'), true)).toEqual({
     commands: [['CAP', 'END']],
