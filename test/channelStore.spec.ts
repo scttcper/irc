@@ -1,6 +1,7 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { ChannelStore } from '../src/channelStore.js';
+import { ircCasefold } from '../src/ircCasefold.js';
 
 it('ensures channel data with the canonical lower-case key', () => {
   const store = new ChannelStore();
@@ -46,4 +47,37 @@ it('adds NAMES replies using the advertised prefix map', () => {
     plain: '',
     voice: '+',
   });
+});
+
+it('does not repeatedly normalize unrelated members during a batch of QUITs', () => {
+  const normalize = vi.fn(ircCasefold);
+  const store = new ChannelStore(normalize);
+  store.ensure('#one');
+  store.ensure('#two');
+  const count = 1000;
+  for (let i = 0; i < count; i++) {
+    store.addUser('#one', `alice${i}`);
+    store.addUser('#two', `bob${i}`);
+  }
+  normalize.mockClear();
+  for (let i = 0; i < count; i++) {
+    expect(store.removeUserFromAll(`ALICE${i}`)).toEqual(['#one']);
+  }
+  expect(normalize.mock.calls.length).toBeLessThan(count * 10);
+  expect(Object.keys(store.get('#two')!.users)).toHaveLength(count);
+});
+
+it('keeps the nickname index current across names, renames, replacement, and removals', () => {
+  const store = new ChannelStore();
+  const channel = store.ensure('#test');
+  store.addNames('#test', ['@[Friend]'], { '@': 'o' });
+  expect(store.findUser(channel, '{friend}')).toBe('[Friend]');
+  store.renameUser('{friend}', 'NewFriend');
+  expect(store.findUser(channel, '[friend]')).toBeUndefined();
+  expect(store.findUser(channel, 'newfriend')).toBe('NewFriend');
+  channel.users = { Replacement: '+' };
+  expect(store.findUser(channel, 'replacement')).toBe('Replacement');
+  expect(store.findUser(channel, 'newfriend')).toBeUndefined();
+  store.removeUser('#test', 'REPLACEMENT');
+  expect(store.findUser(channel, 'replacement')).toBeUndefined();
 });

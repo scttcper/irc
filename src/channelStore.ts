@@ -1,15 +1,17 @@
-import { findName, ircCasefold } from './ircCasefold.js';
+import { ircCasefold } from './ircCasefold.js';
 import type { ChannelData } from './ircTypes.js';
 
 export class ChannelStore {
   channels: Record<string, ChannelData> = Object.create(null);
   private readonly normalize: (name: string) => string;
+  private userIndexes = new WeakMap<Record<string, string>, Map<string, string>>();
 
   constructor(normalize = ircCasefold) {
     this.normalize = normalize;
   }
 
   reindex(): void {
+    this.userIndexes = new WeakMap();
     this.channels = Object.assign(
       Object.create(null),
       Object.fromEntries(
@@ -49,15 +51,48 @@ export class ChannelStore {
     delete this.channels[key];
   }
 
+  private userIndex(users: Record<string, string>): Map<string, string> {
+    let index = this.userIndexes.get(users);
+    if (!index) {
+      index = new Map(Object.keys(users).map(nick => [this.normalize(nick), nick]));
+      this.userIndexes.set(users, index);
+    }
+    return index;
+  }
+
+  findUser(channel: ChannelData, nick: string): string | undefined {
+    if (Object.hasOwn(channel.users, nick)) {
+      return nick;
+    }
+    const key = this.userIndex(channel.users).get(this.normalize(nick));
+    return key !== undefined && Object.hasOwn(channel.users, key) ? key : undefined;
+  }
+
+  private setUser(channel: ChannelData, nick: string, prefix: string): void {
+    const index = this.userIndex(channel.users);
+    const normalized = this.normalize(nick);
+    const previous = index.get(normalized);
+    if (previous !== undefined && previous !== nick) {
+      delete channel.users[previous];
+    }
+    Object.defineProperty(channel.users, nick, {
+      value: prefix,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+    index.set(normalized, nick);
+  }
+
+  private deleteUser(channel: ChannelData, nick: string): void {
+    delete channel.users[nick];
+    this.userIndex(channel.users).delete(this.normalize(nick));
+  }
+
   addUser(channelName: string, nick: string): void {
     const channel = this.get(channelName);
     if (channel?.users) {
-      Object.defineProperty(channel.users, nick, {
-        value: '',
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      });
+      this.setUser(channel, nick, '');
     }
   }
 
@@ -65,9 +100,9 @@ export class ChannelStore {
     const channel = this.get(channelName);
     if (channel?.users) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      const key = findName(channel.users, nick, this.normalize);
+      const key = this.findUser(channel, nick);
       if (key !== undefined) {
-        delete channel.users[key];
+        this.deleteUser(channel, key);
       }
     }
   }
@@ -75,17 +110,12 @@ export class ChannelStore {
   renameUser(oldNick: string, newNick: string): string[] {
     const channels: string[] = [];
     for (const [channelName, channel] of Object.entries(this.channels)) {
-      const key = findName(channel.users, oldNick, this.normalize);
+      const key = this.findUser(channel, oldNick);
       if (key !== undefined) {
         const prefix = channel.users[key];
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[key];
-        Object.defineProperty(channel.users, newNick, {
-          value: prefix,
-          enumerable: true,
-          configurable: true,
-          writable: true,
-        });
+        this.deleteUser(channel, key);
+        this.setUser(channel, newNick, prefix);
         channels.push(channelName);
       }
     }
@@ -96,10 +126,10 @@ export class ChannelStore {
   removeUserFromAll(nick: string): string[] {
     const channels: string[] = [];
     for (const [channelName, channel] of Object.entries(this.channels)) {
-      const key = findName(channel.users, nick, this.normalize);
+      const key = this.findUser(channel, nick);
       if (key !== undefined) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[key];
+        this.deleteUser(channel, key);
         channels.push(channelName);
       }
     }
@@ -121,8 +151,7 @@ export class ChannelStore {
 
       const prefixed = Object.hasOwn(modeForPrefix, match[1]);
       const nick = prefixed ? match[2] : user;
-      this.addUser(channelName, nick);
-      channel.users[nick] = prefixed ? match[1] : '';
+      this.setUser(channel, nick, prefixed ? match[1] : '');
     }
   }
 }

@@ -16,6 +16,7 @@ export function applyChannelModeChange({
   prefixForMode,
   supported,
   normalize = ircCasefold,
+  findUser = nick => findName(channel.users, nick, normalize),
 }: {
   channel: ChannelData;
   modes: string;
@@ -23,6 +24,7 @@ export function applyChannelModeChange({
   prefixForMode: Record<string, string>;
   supported: ChannelModes;
   normalize?: (name: string) => string;
+  findUser?: (nick: string) => string | undefined;
 }): ChannelModeEvent[] {
   const events: ChannelModeEvent[] = [];
   let adding = true;
@@ -43,7 +45,7 @@ export function applyChannelModeChange({
 
     if (mode in prefixForMode) {
       argument = modeArgs.shift();
-      updateUserPrefix(channel, argument, prefixForMode[mode], adding, normalize);
+      updateUserPrefix(channel, argument, prefixForMode[mode], adding, findUser);
     } else if (supported.a.includes(mode)) {
       argument = modeArgs.shift();
       updateChannelMode(channel, mode, adding, argument ? [argument] : []);
@@ -132,9 +134,9 @@ function updateUserPrefix(
   nick: string | undefined,
   prefix: string,
   adding: boolean,
-  normalize: (name: string) => string,
+  findUser: (nick: string) => string | undefined,
 ): void {
-  const key = nick ? findName(channel.users, nick, normalize) : undefined;
+  const key = nick ? findUser(nick) : undefined;
   if (key === undefined) {
     return;
   }

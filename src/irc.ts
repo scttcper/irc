@@ -765,7 +765,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       modeArgs: message.args.slice(2),
       modes: message.args[1],
       prefixForMode: this.prefixForMode,
-      normalize: name => this.casefold(name),
+      findUser: nick => this.channelStore.findUser(channel, nick),
       supported: this.supported.channel.modes,
     });
 
