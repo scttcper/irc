@@ -119,7 +119,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.addListener('raw', message => this._handleRawMessage(message));
     this.addListener('kick', (channel: string, n: string) => {
       if (this.opt.autoRejoin && n.toLowerCase() === this.nick.toLowerCase()) {
-        this.join(channel);
+        const target = [...this.opt.channels, ...this._autoJoinChannels].find(
+          entry => entry.split(' ')[0].toLowerCase() === channel.toLowerCase(),
+        );
+        this.join(target ?? channel);
       }
     });
     this.addListener('motd', () => {
@@ -251,20 +254,30 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   join(channel: string) {
-    const onJoin = (joinedChannel: string) => {
-      if (joinedChannel.toLowerCase() !== channel.toLowerCase()) {
+    const params = channel.trim().split(/ +/);
+    const channelName = params[0];
+    const onJoin = (joinedChannel: string, nick: string) => {
+      if (
+        joinedChannel.toLowerCase() !== channelName.toLowerCase() ||
+        nick.toLowerCase() !== this.nick.toLowerCase()
+      ) {
         return;
       }
 
       this.removeListener('join', onJoin);
       // Track for auto-rejoin on reconnect.
-      if (!this._isChannelTracked(channel)) {
-        this._autoJoinChannels.push(channel);
+      if (!this._isChannelTracked(channelName)) {
+        this._autoJoinChannels.push(params.join(' '));
       }
     };
     this.addListener('join', onJoin);
 
-    this.send('JOIN', channel);
+    try {
+      this.send('JOIN', ...params);
+    } catch (error) {
+      this.removeListener('join', onJoin);
+      throw error;
+    }
   }
 
   part(channel: string) {
@@ -781,7 +794,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       return true;
     }
 
-    return this._autoJoinChannels.some(name => name.toLowerCase() === lower);
+    return this._autoJoinChannels.some(name => name.split(' ')[0].toLowerCase() === lower);
   }
 
   private _handleNicknameinuse(message: Message): void {

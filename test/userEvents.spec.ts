@@ -5,6 +5,21 @@ import { IrcClient } from '../src/irc.js';
 import { setupMockClient } from './helpers.js';
 
 describe('user events', () => {
+  it('joins keyed channels and retains their keys for reconnects and kicks', () => {
+    const client = setupMockClient('testbot', { autoRejoin: true });
+    client.join('#locked secret');
+    expect(client.connection.socket.write).toHaveBeenLastCalledWith('JOIN #locked secret\r\n');
+    client.handleData(':other!u@h JOIN #locked\r\n');
+    expect(client.listenerCount('join')).toBe(1);
+    client.handleData(':testbot!u@h JOIN #locked\r\n');
+    expect(client.listenerCount('join')).toBe(0);
+    client.handleData(':server 422 testbot :No MOTD\r\n');
+    expect(client.connection.socket.write).toHaveBeenLastCalledWith('JOIN #locked secret\r\n');
+    client.handleData(':testbot!u@h JOIN #locked\r\n');
+    client.handleData(':other!u@h KICK #locked testbot :bye\r\n');
+    expect(client.connection.socket.write).toHaveBeenLastCalledWith('JOIN #locked secret\r\n');
+  });
+
   it.each(['#test', '&local'])('emits the channel message event for %s', channel => {
     const client = setupMockClient('testbot');
     const listener = vi.fn();
