@@ -27,6 +27,8 @@ export type ChannelData = {
 };
 
 export type SupportedFeatures = {
+  /** Case comparison rules advertised by CASEMAPPING. */
+  caseMapping: string;
   channel: {
     /** Maximum identifier length for each supported channel prefix, from `IDCHAN`. */
     idlength: Record<string, number>;

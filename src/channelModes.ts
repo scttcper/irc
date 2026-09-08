@@ -1,3 +1,4 @@
+import { findName, ircCasefold } from './ircCasefold.js';
 import type { ChannelData, SupportedFeatures } from './ircTypes.js';
 
 export type ChannelModeEvent = {
@@ -14,12 +15,14 @@ export function applyChannelModeChange({
   modeArgs,
   prefixForMode,
   supported,
+  normalize = ircCasefold,
 }: {
   channel: ChannelData;
   modes: string;
   modeArgs: string[];
   prefixForMode: Record<string, string>;
   supported: ChannelModes;
+  normalize?: (name: string) => string;
 }): ChannelModeEvent[] {
   const events: ChannelModeEvent[] = [];
   let adding = true;
@@ -40,7 +43,7 @@ export function applyChannelModeChange({
 
     if (mode in prefixForMode) {
       argument = modeArgs.shift();
-      updateUserPrefix(channel, argument, prefixForMode[mode], adding);
+      updateUserPrefix(channel, argument, prefixForMode[mode], adding, normalize);
     } else if (supported.a.includes(mode)) {
       argument = modeArgs.shift();
       updateChannelMode(channel, mode, adding, argument ? [argument] : []);
@@ -129,17 +132,19 @@ function updateUserPrefix(
   nick: string | undefined,
   prefix: string,
   adding: boolean,
+  normalize: (name: string) => string,
 ): void {
-  if (!nick || !Object.hasOwn(channel.users, nick)) {
+  const key = nick ? findName(channel.users, nick, normalize) : undefined;
+  if (key === undefined) {
     return;
   }
 
   if (adding) {
-    if (!channel.users[nick].includes(prefix)) {
-      channel.users[nick] += prefix;
+    if (!channel.users[key].includes(prefix)) {
+      channel.users[key] += prefix;
     }
   } else {
-    channel.users[nick] = channel.users[nick].replace(prefix, '');
+    channel.users[key] = channel.users[key].replace(prefix, '');
   }
 }
 

@@ -16,6 +16,7 @@ import { ChannelStore } from './channelStore.js';
 import { getConnectionRegistrationCommands } from './connectionRegistration.js';
 import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } from './ctcp.js';
 import { CyclingPingTimer } from './cyclingPingTimer.js';
+import { ircCasefold } from './ircCasefold.js';
 import {
   applyIsupport,
   createSupportedFeatures,
@@ -69,9 +70,9 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   hostMask = '';
   maxLineLength?: number;
   private readonly channelListTracker = new ChannelListTracker();
-  private readonly channelStore = new ChannelStore();
+  private readonly channelStore = new ChannelStore(name => this.casefold(name));
   private readonly nicknameRecovery: NickRecovery;
-  private readonly whoisTracker = new WhoisTracker();
+  private readonly whoisTracker = new WhoisTracker(undefined, name => this.casefold(name));
   private readonly advertisedCapabilities = new Map<string, string | undefined>();
   supported: SupportedFeatures = createSupportedFeatures();
 
@@ -87,22 +88,26 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     super();
     this.opt = defaultsdeep({ host, nick }, opt, defaultOptions);
     this.supported.channel.types = this.opt.channelPrefixes;
-    this.nicknameRecovery = new NickRecovery(this.opt, {
-      debug: (...args) => this.debug(...args),
-      getCurrentNick: () => this.nick,
-      requestPreferredNick: nickToRequest => this.send('NICK', nickToRequest),
-      useFallbackNick: fallbackNick => {
-        this.send('NICK', fallbackNick);
-        this.nick = fallbackNick;
-        this._updateMaxLineLength();
+    this.nicknameRecovery = new NickRecovery(
+      this.opt,
+      {
+        debug: (...args) => this.debug(...args),
+        getCurrentNick: () => this.nick,
+        requestPreferredNick: nickToRequest => this.send('NICK', nickToRequest),
+        useFallbackNick: fallbackNick => {
+          this.send('NICK', fallbackNick);
+          this.nick = fallbackNick;
+          this._updateMaxLineLength();
+        },
       },
-    });
+      name => this.casefold(name),
+    );
 
     this.addListener('raw', message => this._handleRawMessage(message));
     this.addListener('kick', (channel: string, n: string) => {
-      if (this.opt.autoRejoin && n.toLowerCase() === this.nick.toLowerCase()) {
+      if (this.opt.autoRejoin && this.casefold(n) === this.casefold(this.nick)) {
         const target = [...this.opt.channels, ...this._autoJoinChannels].find(
-          entry => entry.split(' ')[0].toLowerCase() === channel.toLowerCase(),
+          entry => this.casefold(entry.split(' ')[0]) === this.casefold(channel),
         );
         this.join(target ?? channel);
       }
@@ -248,8 +253,8 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     const channelName = params[0];
     const onJoin = (joinedChannel: string, nick: string) => {
       if (
-        joinedChannel.toLowerCase() !== channelName.toLowerCase() ||
-        nick.toLowerCase() !== this.nick.toLowerCase()
+        this.casefold(joinedChannel) !== this.casefold(channelName) ||
+        this.casefold(nick) !== this.casefold(this.nick)
       ) {
         return;
       }
@@ -429,7 +434,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
     }
 
-    this.emitDynamicChannelEvent(`${eventName}${channel}`, args);
+    this.emitDynamicChannelEvent(`${eventName}${this.casefold(channel)}`, args);
   }
 
   private emitDynamicChannelEvent(eventName: string, args: readonly unknown[]): void {
@@ -502,7 +507,12 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
         break;
       }
       case 'rpl_isupport': {
+        const previous = this.supported.caseMapping;
         applyIsupport(message.args, this.supported, this.modeForPrefix, this.prefixForMode);
+        if (this.supported.caseMapping !== previous) {
+          this.channelStore.reindex();
+          this.whoisTracker.reindex();
+        }
         break;
       }
       case 'rpl_yourhost':
@@ -704,7 +714,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleNick(message: Message): void {
-    if (message.nick === this.nick) {
+    if (this.casefold(message.nick) === this.casefold(this.nick)) {
       // client just changed own nick
       this.nick = message.args[0];
       this.cancelAutoRenick();
@@ -737,6 +747,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       modeArgs: message.args.slice(2),
       modes: message.args[1],
       prefixForMode: this.prefixForMode,
+      normalize: name => this.casefold(name),
       supported: this.supported.channel.modes,
     });
 
@@ -772,7 +783,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('notice', from, to, text, message);
 
-    if (to === this.nick) {
+    if (this.casefold(to) === this.casefold(this.nick)) {
       this.debug(`GOT NOTICE from ${from ? `"${from}"` : 'the server'}: "${text}"`);
     }
   }
@@ -805,16 +816,20 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       : this.notice(to, formatCtcpMessage(text));
   }
 
+  private casefold(name: string): string {
+    return ircCasefold(name ?? '', this.supported.caseMapping);
+  }
+
   private _isChannelTracked(channelName: string): boolean {
-    const lower = channelName.toLowerCase();
+    const lower = this.casefold(channelName);
     const inOpt = this.opt.channels.some(entry => {
-      return entry.split(' ')[0].toLowerCase() === lower;
+      return this.casefold(entry.split(' ')[0]) === lower;
     });
     if (inOpt) {
       return true;
     }
 
-    return this._autoJoinChannels.some(name => name.split(' ')[0].toLowerCase() === lower);
+    return this._autoJoinChannels.some(name => this.casefold(name.split(' ')[0]) === lower);
   }
 
   private _handleNicknameinuse(message: Message): void {
@@ -853,7 +868,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handlePart(message: Message): void {
     // channel, who, reason
-    if (this.nick === message.nick) {
+    if (this.casefold(this.nick) === this.casefold(message.nick)) {
       this.channelStore.remove(message.args[0]);
     } else {
       this.channelStore.removeUser(message.args[0], message.nick);
@@ -863,7 +878,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   }
 
   private _handleKick(message: Message): void {
-    if (this.nick === message.args[1]) {
+    if (this.casefold(this.nick) === this.casefold(message.args[1])) {
       this.channelStore.remove(message.args[0]);
     } else {
       this.channelStore.removeUser(message.args[0], message.args[1]);
@@ -890,10 +905,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
     this.emit('message', from, to, text, message);
     if (this.supported.channel.types.includes(to.charAt(0))) {
-      this.emit(`message${to.toLowerCase()}`, from, to, text, message);
+      this.emit(`message${this.casefold(to)}`, from, to, text, message);
     }
 
-    if (to.toUpperCase() === this.nick.toUpperCase()) {
+    if (this.casefold(to) === this.casefold(this.nick)) {
       this.emit('pm', from, text, message);
       this.debug(`GOT MESSAGE from "${from}": "${text}"`);
     }
@@ -901,7 +916,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleQuit(message: Message): void {
     this.debug(`QUIT: ${message.prefix} ${message.args.join(' ')}`);
-    if (this.nick === message.nick) {
+    if (this.casefold(this.nick) === this.casefold(message.nick)) {
       // TODO handle?
       return;
     }
@@ -938,7 +953,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   private _handleJoin(message: Message): void {
     // channel, who
-    if (this.nick === message.nick) {
+    if (this.casefold(this.nick) === this.casefold(message.nick)) {
       this.channelStore.ensure(message.args[0]);
     } else {
       this.channelStore.addUser(message.args[0], message.nick);

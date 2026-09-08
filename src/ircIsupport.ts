@@ -67,6 +67,11 @@ export function applyIsupport(
 
     // RPL_ISUPPORT tokens and removals: https://modern.ircdocs.horse/#rplisupport-005
     switch (param) {
+      case 'CASEMAPPING': {
+        supported.caseMapping = removed ? 'rfc1459' : value;
+        break;
+      }
+
       case 'CHANLIMIT': {
         if (removed) {
           supported.channel.limit = {};
@@ -214,6 +219,7 @@ export function applyIsupport(
 
 export function createSupportedFeatures(channelTypes = defaultChannelTypes): SupportedFeatures {
   return {
+    caseMapping: 'rfc1459',
     channel: {
       idlength: {},
       length: 200,

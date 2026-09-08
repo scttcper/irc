@@ -1,3 +1,4 @@
+import { ircCasefold } from './ircCasefold.js';
 import type { IrcOptions } from './ircOptions.js';
 
 type NickRecoveryOptions = Pick<IrcOptions, 'autoRenick' | 'nick' | 'renickCount' | 'renickDelay'>;
@@ -16,7 +17,10 @@ export class NickRecovery {
   private readonly options: NickRecoveryOptions;
   private renickInterval?: ReturnType<typeof setInterval>;
 
-  constructor(options: NickRecoveryOptions, actions: NickRecoveryActions) {
+  private readonly normalize: (name: string) => string;
+
+  constructor(options: NickRecoveryOptions, actions: NickRecoveryActions, normalize = ircCasefold) {
+    this.normalize = normalize;
     this.options = options;
     this.actions = actions;
   }
@@ -35,7 +39,10 @@ export class NickRecovery {
   }
 
   handleNicknameInUse(takenNick: string): void {
-    if (takenNick === this.options.nick && this.hasRecentPreferredNickAttempt()) {
+    if (
+      this.normalize(takenNick) === this.normalize(this.options.nick) &&
+      this.hasRecentPreferredNickAttempt()
+    ) {
       this.actions.debug('Attempted to automatically renick to', takenNick, 'and found it taken');
       return;
     }
@@ -56,7 +63,7 @@ export class NickRecovery {
     let renickTimes = 0;
     this.cancelAutoRenick();
     this.renickInterval = setInterval(() => {
-      if (this.actions.getCurrentNick() === this.options.nick) {
+      if (this.normalize(this.actions.getCurrentNick()) === this.normalize(this.options.nick)) {
         this.actions.debug(
           'Attempted to automatically renick to',
           this.options.nick,

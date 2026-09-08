@@ -1,9 +1,11 @@
+import { ircCasefold } from './ircCasefold.js';
 import type { WhoIsData } from './ircTypes.js';
 import type { Message } from './parseMessage.js';
 
 export type WhoisResult = WhoIsData & { nick?: string; user?: string; host?: string };
 
 type PendingWhoisRequest = {
+  nick: string;
   resolve: (info: WhoisResult) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -16,20 +18,41 @@ export class WhoisTracker {
   private readonly pending = new Map<string, Set<PendingWhoisRequest>>();
   private readonly timeoutMs: number;
 
-  constructor(timeoutMs = defaultWhoisTimeoutMs) {
+  private readonly normalize: (name: string) => string;
+
+  constructor(timeoutMs = defaultWhoisTimeoutMs, normalize = ircCasefold) {
     this.timeoutMs = timeoutMs;
+    this.normalize = normalize;
+  }
+
+  reindex(): void {
+    const entries = Object.values(this.data);
+    for (const key of Object.keys(this.data)) {
+      delete this.data[key];
+    }
+    for (const entry of entries) {
+      this.data[this.normalize(entry.nick as string)] = entry;
+    }
+    const requests = [...this.pending.values()].flatMap(group => [...group]);
+    this.pending.clear();
+    for (const request of requests) {
+      const key = this.normalize(request.nick);
+      const group = this.pending.get(key) ?? new Set<PendingWhoisRequest>();
+      group.add(request);
+      this.pending.set(key, group);
+    }
   }
 
   request(nick: string): { promise: Promise<WhoisResult>; shouldSend: boolean } {
-    const normalizedNick = nick.toLowerCase();
+    const normalizedNick = this.normalize(nick);
     let request: PendingWhoisRequest;
     const promise = new Promise<WhoisResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.removeRequest(normalizedNick, request);
+        this.removeRequest(request);
         reject(new Error(`WHOIS timed out for ${nick}`));
       }, this.timeoutMs);
 
-      request = { resolve, reject, timeout };
+      request = { nick, resolve, reject, timeout };
       const requests = this.pending.get(normalizedNick) ?? new Set();
       requests.add(request);
       this.pending.set(normalizedNick, requests);
@@ -72,7 +95,7 @@ export class WhoisTracker {
         return undefined;
       }
       case 'rpl_whoischannels': {
-        const existingChannels = this.data[message.args[1]]?.channels;
+        const existingChannels = this.data[this.normalize(message.args[1])]?.channels;
         const channels = Array.isArray(existingChannels) ? existingChannels : [];
         this.add(message.args[1], 'channels', [
           ...channels,
@@ -112,24 +135,27 @@ export class WhoisTracker {
   }
 
   private add(nick: string, key: string, value: string | string[], onlyIfExists?: boolean): void {
-    if (onlyIfExists && !this.data[nick]) {
+    const normalizedNick = this.normalize(nick);
+    if (onlyIfExists && !this.data[normalizedNick]) {
       return;
     }
 
-    this.data[nick] = this.data[nick] ?? { nick };
-    this.data[nick][key] = value;
+    this.data[normalizedNick] = this.data[normalizedNick] ?? { nick };
+    this.data[normalizedNick][key] = value;
   }
 
   private complete(nick: string): WhoIsData {
     this.add(nick, 'nick', nick);
-    const info = this.data[nick];
+    const normalizedNick = this.normalize(nick);
+    const info = this.data[normalizedNick];
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete this.data[nick];
+    delete this.data[normalizedNick];
     this.resolve(nick, info);
     return info;
   }
 
-  private removeRequest(nick: string, request: PendingWhoisRequest): void {
+  private removeRequest(request: PendingWhoisRequest): void {
+    const nick = this.normalize(request.nick);
     clearTimeout(request.timeout);
     const requests = this.pending.get(nick);
     if (!requests) {
@@ -144,7 +170,7 @@ export class WhoisTracker {
   }
 
   private resolve(nick: string, info: WhoisResult): void {
-    const requests = this.pending.get(nick.toLowerCase());
+    const requests = this.pending.get(this.normalize(nick));
     if (!requests) {
       return;
     }
@@ -154,6 +180,6 @@ export class WhoisTracker {
       request.resolve(info);
     }
 
-    this.pending.delete(nick.toLowerCase());
+    this.pending.delete(this.normalize(nick));
   }
 }

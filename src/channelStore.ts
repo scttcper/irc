@@ -1,22 +1,41 @@
+import { findName, ircCasefold } from './ircCasefold.js';
 import type { ChannelData } from './ircTypes.js';
 
 export class ChannelStore {
-  channels: Record<string, ChannelData> = {};
+  channels: Record<string, ChannelData> = Object.create(null);
+  private readonly normalize: (name: string) => string;
+
+  constructor(normalize = ircCasefold) {
+    this.normalize = normalize;
+  }
+
+  reindex(): void {
+    this.channels = Object.assign(
+      Object.create(null),
+      Object.fromEntries(
+        Object.entries(this.channels).map(([key, channel]) => [
+          this.normalize(channel.serverName ?? key),
+          channel,
+        ]),
+      ),
+    );
+  }
 
   replace(channels: Record<string, ChannelData>): void {
     this.channels = channels;
+    this.reindex();
   }
 
   get(name: string): ChannelData | undefined {
-    return this.channels[name.toLowerCase()];
+    return this.channels[this.normalize(name)];
   }
 
   ensure(name: string): ChannelData {
-    const key = name.toLowerCase();
+    const key = this.normalize(name);
     this.channels[key] = this.channels[key] ?? {
       key,
       serverName: name,
-      users: {},
+      users: Object.create(null),
       modeParams: {},
       mode: '',
     };
@@ -25,7 +44,7 @@ export class ChannelStore {
   }
 
   remove(name: string): void {
-    const key = name.toLowerCase();
+    const key = this.normalize(name);
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete this.channels[key];
   }
@@ -33,7 +52,12 @@ export class ChannelStore {
   addUser(channelName: string, nick: string): void {
     const channel = this.get(channelName);
     if (channel?.users) {
-      channel.users[nick] = '';
+      Object.defineProperty(channel.users, nick, {
+        value: '',
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
   }
 
@@ -41,17 +65,27 @@ export class ChannelStore {
     const channel = this.get(channelName);
     if (channel?.users) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete channel.users[nick];
+      const key = findName(channel.users, nick, this.normalize);
+      if (key !== undefined) {
+        delete channel.users[key];
+      }
     }
   }
 
   renameUser(oldNick: string, newNick: string): string[] {
     const channels: string[] = [];
     for (const [channelName, channel] of Object.entries(this.channels)) {
-      if (oldNick in channel.users) {
-        channel.users[newNick] = channel.users[oldNick];
+      const key = findName(channel.users, oldNick, this.normalize);
+      if (key !== undefined) {
+        const prefix = channel.users[key];
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[oldNick];
+        delete channel.users[key];
+        Object.defineProperty(channel.users, newNick, {
+          value: prefix,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
         channels.push(channelName);
       }
     }
@@ -62,9 +96,10 @@ export class ChannelStore {
   removeUserFromAll(nick: string): string[] {
     const channels: string[] = [];
     for (const [channelName, channel] of Object.entries(this.channels)) {
-      if (nick in channel.users) {
+      const key = findName(channel.users, nick, this.normalize);
+      if (key !== undefined) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete channel.users[nick];
+        delete channel.users[key];
         channels.push(channelName);
       }
     }
@@ -84,11 +119,10 @@ export class ChannelStore {
         continue;
       }
 
-      if (match[1] in modeForPrefix) {
-        channel.users[match[2]] = match[1];
-      } else {
-        channel.users[match[1] + match[2]] = '';
-      }
+      const prefixed = Object.hasOwn(modeForPrefix, match[1]);
+      const nick = prefixed ? match[2] : user;
+      this.addUser(channelName, nick);
+      channel.users[nick] = prefixed ? match[1] : '';
     }
   }
 }
