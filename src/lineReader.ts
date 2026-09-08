@@ -1,98 +1,119 @@
-import { convertEncodingHelper, lineDelimiter, utf8Decoder, utf8Encoder } from './ircEncoding.js';
-import { concatUint8Arrays } from './uint8array.js';
+import { convertEncodingHelper, utf8Decoder, utf8Encoder } from './ircEncoding.js';
 
-function isLineTerminated(bytes: Uint8Array): boolean {
-  const lastByte = bytes[bytes.length - 1];
-  return lastByte === 10 || lastByte === 13;
-}
-
-function removeEmptyLines(lines: string[]): string[] {
-  let next = 0;
-  for (const line of lines) {
-    if (line.length === 0) {
-      continue;
-    }
-
-    lines[next] = line;
-    next++;
-  }
-
-  lines.length = next;
-  return lines;
-}
+// IRCv3 allows 8191 bytes of tags in addition to the 512-byte message (including CRLF).
+// https://ircv3.net/specs/extensions/message-tags.html#size-limit
+const maxTagBytes = 8191;
+const maxBodyBytes = 510;
 
 export class LineReader {
   private readonly encoding: string | null;
-  private pendingBytes?: Uint8Array;
-  private pendingText?: string;
+  private readonly buffer = new Uint8Array(maxTagBytes + maxBodyBytes);
+  private bufferedBytes = 0;
+  private textParts: string[] = [];
+  private lineBytes = 0;
+  private tagBytes = 0;
+  private readingTags = false;
+  private discarding = false;
+  private trailingHighSurrogate = false;
 
   constructor(encoding: string | null) {
     this.encoding = encoding;
   }
 
   read(chunk: string | Uint8Array): string[] {
-    if (typeof chunk === 'string' && !this.pendingBytes?.length) {
-      return this.readTextLines(chunk).filter(line => line.length > 0);
+    if (typeof chunk === 'string' && this.bufferedBytes === 0) {
+      return this.readTextLines(chunk);
     }
 
-    const chunkBytes = typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk;
-    if (this.pendingText) {
-      const pendingText = utf8Encoder.encode(this.pendingText);
-      this.pendingText = undefined;
-      return this.readByteLines(concatUint8Arrays(pendingText, chunkBytes));
+    if (this.textParts.length > 0) {
+      const pending = utf8Encoder.encode(this.textParts.join(''));
+      this.buffer.set(pending);
+      this.bufferedBytes = pending.length;
+      this.textParts = [];
     }
-
-    return this.readByteLines(chunkBytes);
+    this.trailingHighSurrogate = false;
+    return this.readByteLines(typeof chunk === 'string' ? utf8Encoder.encode(chunk) : chunk);
   }
 
-  private convertEncoding(bytes: Uint8Array): string {
-    if (this.encoding) {
-      return convertEncodingHelper(bytes, this.encoding);
-    }
+  private reset(): void {
+    this.bufferedBytes = 0;
+    this.textParts = [];
+    this.lineBytes = 0;
+    this.tagBytes = 0;
+    this.readingTags = false;
+    this.discarding = false;
+    this.trailingHighSurrogate = false;
+  }
 
-    return utf8Decoder.decode(bytes);
+  private accept(code: number, bytes: number): boolean {
+    if (this.discarding) {
+      return false;
+    }
+    if (this.lineBytes === 0) {
+      this.readingTags = code === 64;
+    }
+    this.lineBytes += bytes;
+    if (this.readingTags && code === 32) {
+      this.tagBytes = this.lineBytes;
+      this.readingTags = false;
+    }
+    if (
+      (this.readingTags && this.lineBytes > maxTagBytes) ||
+      this.tagBytes > maxTagBytes ||
+      (!this.readingTags && this.lineBytes - this.tagBytes > maxBodyBytes)
+    ) {
+      // Discard through the next delimiter, without retaining or parsing a truncated command.
+      this.discarding = true;
+      this.bufferedBytes = 0;
+      this.textParts = [];
+      return false;
+    }
+    return true;
   }
 
   private readTextLines(chunk: string): string[] {
-    const text = `${this.pendingText ?? ''}${chunk}`;
-    const lines = text.split(lineDelimiter);
-    const pendingText = lines.pop() ?? '';
-    this.pendingText = pendingText || undefined;
+    const lines: string[] = [];
+    let start = 0;
+    for (let i = 0; i < chunk.length; i++) {
+      const code = chunk.codePointAt(i)!;
+      if (code === 10 || code === 13) {
+        if (!this.discarding && this.lineBytes > 0) {
+          this.textParts.push(chunk.slice(start, i));
+          lines.push(this.textParts.join(''));
+        }
+        this.reset();
+        start = i + 1;
+        continue;
+      }
+      const bytes = code < 128 ? 1 : code < 2048 ? 2 : code < 65_536 ? 3 : 4;
+      const continuesSurrogate = this.trailingHighSurrogate && code >= 56_320 && code <= 57_343;
+      this.accept(code, continuesSurrogate ? 1 : bytes);
+      this.trailingHighSurrogate = code >= 55_296 && code <= 56_319;
+      if (code > 65_535) {
+        i++;
+      }
+    }
+    if (!this.discarding && start < chunk.length) {
+      this.textParts.push(chunk.slice(start));
+    }
     return lines;
   }
 
   private readByteLines(chunk: Uint8Array): string[] {
-    if (!this.pendingBytes?.length && isLineTerminated(chunk)) {
-      this.pendingBytes = undefined;
-      return removeEmptyLines(this.convertEncoding(chunk).split(lineDelimiter));
-    }
-
-    const bytes = this.pendingBytes?.length ? concatUint8Arrays(this.pendingBytes, chunk) : chunk;
     const lines: string[] = [];
-    let lineStart = 0;
-
-    for (let i = 0; i < bytes.length; i++) {
-      const byte = bytes[i];
-      if (byte !== 10 && byte !== 13) {
-        continue;
+    for (const byte of chunk) {
+      if (byte === 10 || byte === 13) {
+        if (!this.discarding && this.bufferedBytes > 0) {
+          const line = this.buffer.subarray(0, this.bufferedBytes);
+          lines.push(
+            this.encoding ? convertEncodingHelper(line, this.encoding) : utf8Decoder.decode(line),
+          );
+        }
+        this.reset();
+      } else if (this.accept(byte, 1)) {
+        this.buffer[this.bufferedBytes++] = byte;
       }
-
-      if (i > lineStart) {
-        lines.push(this.convertEncoding(bytes.subarray(lineStart, i)));
-      }
-      if (byte === 13 && bytes[i + 1] === 10) {
-        i++;
-      }
-
-      lineStart = i + 1;
     }
-
-    if (lineStart < bytes.length) {
-      this.pendingBytes = bytes.slice(lineStart);
-    } else {
-      this.pendingBytes = undefined;
-    }
-
     return lines;
   }
 }
