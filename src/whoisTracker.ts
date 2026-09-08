@@ -50,6 +50,9 @@ export class WhoisTracker {
 
       this.pending.delete(nick);
     }
+    for (const nick of Object.keys(this.data)) {
+      delete this.data[nick];
+    }
   }
 
   handleMessage(message: Message): WhoIsData | undefined {
@@ -136,6 +139,7 @@ export class WhoisTracker {
     requests.delete(request);
     if (requests.size === 0) {
       this.pending.delete(nick);
+      delete this.data[nick];
     }
   }
 

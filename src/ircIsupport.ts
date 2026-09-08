@@ -211,3 +211,22 @@ export function applyIsupport(
     }
   }
 }
+
+export function createSupportedFeatures(channelTypes = defaultChannelTypes): SupportedFeatures {
+  return {
+    channel: {
+      idlength: {},
+      length: 200,
+      limit: {},
+      modes: { ...defaultChannelModes },
+      types: channelTypes,
+    },
+    kicklength: 0,
+    maxlist: {},
+    maxtargets: {},
+    modes: 3,
+    nicklength: 9,
+    topiclength: 0,
+    usermodes: '',
+  };
+}

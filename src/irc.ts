@@ -18,8 +18,7 @@ import { type CtcpType, formatCtcpMessage, isCtcpMessage, parseCtcpMessage } fro
 import { CyclingPingTimer } from './cyclingPingTimer.js';
 import {
   applyIsupport,
-  defaultChannelModes,
-  defaultChannelTypes,
+  createSupportedFeatures,
   defaultModeForPrefix,
   defaultPrefixForMode,
 } from './ircIsupport.js';
@@ -74,25 +73,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   private readonly nicknameRecovery: NickRecovery;
   private readonly whoisTracker = new WhoisTracker();
   private readonly advertisedCapabilities = new Map<string, string | undefined>();
-  // Features supported by the server
-  // (Initial values are RFC 1459 defaults. Zeros signify no default or unlimited value.)
-  // ISUPPORT defaults: https://modern.ircdocs.horse/#feature-advertisement
-  supported: SupportedFeatures = {
-    channel: {
-      idlength: {},
-      length: 200,
-      limit: {},
-      modes: { ...defaultChannelModes },
-      types: defaultChannelTypes,
-    },
-    kicklength: 0,
-    maxlist: {},
-    maxtargets: {},
-    modes: 3,
-    nicklength: 9,
-    topiclength: 0,
-    usermodes: '',
-  };
+  supported: SupportedFeatures = createSupportedFeatures();
 
   motd?: string;
   modeForPrefix: Record<string, string> = { ...defaultModeForPrefix };
@@ -100,6 +81,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
   retryTimeout?: ReturnType<typeof setTimeout>;
   /** Channels joined at runtime, tracked separately from the initial options. */
   private _autoJoinChannels: string[] = [];
+  private readonly pendingJoins = new Set<(channel: string, nick: string) => void>();
 
   constructor(host: string, nick: string, opt: Partial<IrcOptions> = {}) {
     super();
@@ -154,13 +136,21 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
 
   connect(retryCount = 0) {
     this.clearRetryTimeout();
-    this.advertisedCapabilities.clear();
+    if (this.connection) {
+      this.connection.requestedDisconnect = true;
+      this.connection.cyclingPingTimer.stop();
+      this.connection.socket?.destroy();
+    }
+    this.resetConnectionState();
     this.nicknameRecovery.beginConnection();
     const connection: IrcClient['connection'] = {
       cyclingPingTimer: new CyclingPingTimer(this.opt),
       lineReader: new LineReader(this.opt.encoding),
     };
     const onConnect = () => {
+      if (connection !== this.connection) {
+        return;
+      }
       // Callback called only after successful socket connection
       if (!this.opt.encoding) {
         this.connection.socket.setEncoding('utf-8');
@@ -265,17 +255,20 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       }
 
       this.removeListener('join', onJoin);
+      this.pendingJoins.delete(onJoin);
       // Track for auto-rejoin on reconnect.
       if (!this._isChannelTracked(channelName)) {
         this._autoJoinChannels.push(params.join(' '));
       }
     };
     this.addListener('join', onJoin);
+    this.pendingJoins.add(onJoin);
 
     try {
       this.send('JOIN', ...params);
     } catch (error) {
       this.removeListener('join', onJoin);
+      this.pendingJoins.delete(onJoin);
       throw error;
     }
   }
@@ -382,6 +375,23 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.connection.cyclingPingTimer.stop();
     this.cancelAutoRenick();
     this.connection.socket.destroy();
+  }
+
+  private resetConnectionState(): void {
+    this.channelStore.replace({});
+    this.channelListTracker.replace([]);
+    this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
+    this.advertisedCapabilities.clear();
+    this.supported = createSupportedFeatures(this.opt.channelPrefixes);
+    this.modeForPrefix = { ...defaultModeForPrefix };
+    this.prefixForMode = { ...defaultPrefixForMode };
+    this.motd = undefined;
+    this.hostMask = '';
+    this.maxLineLength = undefined;
+    for (const listener of this.pendingJoins) {
+      this.removeListener('join', listener);
+    }
+    this.pendingJoins.clear();
   }
 
   private clearRetryTimeout() {
