@@ -130,3 +130,34 @@ it('does not time out registration after the client ends the connection', () => 
   expect(socket.destroy).toHaveBeenCalledOnce();
   expect(connect).toHaveBeenCalledOnce();
 });
+
+it('resets the retry count after a connection registers', () => {
+  vi.useFakeTimers();
+  const sockets: MockSocket[] = [];
+  connect.mockImplementation(() => {
+    const socket = new MockSocket();
+    sockets.push(socket);
+    return socket;
+  });
+  const client = new IrcClient('server', 'bot', {
+    retryCount: 1,
+    retryDelay: 10,
+    millisecondsOfSilenceBeforePingSent: 60_000,
+  });
+  const aborted = vi.fn();
+  client.on('abort', aborted);
+  client.connect();
+
+  for (let i = 0; i < 3; i++) {
+    connect.mock.calls[i][1]();
+    sockets[i].emit('data', ':server 001 bot :Welcome bot!u@h\r\n');
+    sockets[i].destroy();
+    vi.advanceTimersByTime(10);
+  }
+  expect(connect).toHaveBeenCalledTimes(4);
+  expect(aborted).not.toHaveBeenCalled();
+
+  sockets[3].destroy();
+  expect(aborted).toHaveBeenCalledWith(1);
+  client.end();
+});

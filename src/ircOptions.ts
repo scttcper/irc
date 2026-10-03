@@ -28,7 +28,10 @@ export interface IrcOptions {
   autoRejoin: boolean;
   /** Try to reclaim the original nickname after falling back due to nick collisions. */
   autoRenick: boolean;
-  /** Maximum reconnect attempts after an unexpected disconnect. `null` means unlimited retries. */
+  /**
+   * Maximum consecutive reconnect attempts after an unexpected disconnect. The count resets once
+   * a connection registers. `null` means unlimited retries.
+   */
   retryCount: number | null;
   /** Delay in milliseconds before attempting to reconnect. */
   retryDelay: number;

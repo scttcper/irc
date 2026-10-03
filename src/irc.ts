@@ -65,6 +65,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     lineReader: LineReader;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     requestedDisconnect?: boolean;
+    registered?: boolean;
     registrationTimeout?: ReturnType<typeof setTimeout>;
   };
 
@@ -204,9 +205,10 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
       connection.cyclingPingTimer.stop();
       this.cancelAutoRenick();
-      // connection = null;
-      // limit to retryCount reconnections
-      if (this.opt.retryCount !== null && retryCount >= this.opt.retryCount) {
+      // limit to retryCount consecutive failed reconnections, a connection
+      // that registered successfully starts the count over
+      const failedAttempts = connection.registered ? 0 : retryCount;
+      if (this.opt.retryCount !== null && failedAttempts >= this.opt.retryCount) {
         this.debug(`Maximum retry count (${this.opt.retryCount}) reached. Aborting`);
         this.emit('abort', this.opt.retryCount);
         return;
@@ -215,7 +217,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       // actually reconnect
       this.debug(`Waiting ${this.opt.retryDelay}ms before retrying`);
       this.retryTimeout = setTimeout(() => {
-        this.connect(retryCount + 1);
+        this.connect(failedAttempts + 1);
       }, this.opt.retryDelay);
     });
 
@@ -525,6 +527,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // Clients must answer server PINGs during registration, but only start
     // client-initiated keepalives after registration completes.
     // https://modern.ircdocs.horse/#connection-registration
+    this.connection.registered = true;
     this.clearRegistrationTimeout(this.connection);
     this.connection.cyclingPingTimer.start();
     this.emit('registered', message);
