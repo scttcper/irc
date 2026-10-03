@@ -69,3 +69,64 @@ it('resets connection state while retaining subscriptions and user listeners', a
   });
   client.end();
 });
+
+it('reconnects when registration does not complete in time', () => {
+  vi.useFakeTimers();
+  const sockets: MockSocket[] = [];
+  connect.mockImplementation(() => {
+    const socket = new MockSocket();
+    sockets.push(socket);
+    return socket;
+  });
+  const client = new IrcClient('server', 'bot', {
+    retryDelay: 10,
+    millisecondsBeforeRegistrationTimeout: 1000,
+  });
+  client.connect();
+  connect.mock.calls[0][1]();
+  sockets[0].emit('data', ':server NOTICE * :*** Looking up your hostname...\r\n');
+
+  vi.advanceTimersByTime(999);
+  expect(sockets[0].destroy).not.toHaveBeenCalled();
+
+  vi.advanceTimersByTime(1);
+  expect(sockets[0].destroy).toHaveBeenCalledOnce();
+
+  vi.advanceTimersByTime(10);
+  expect(connect).toHaveBeenCalledTimes(2);
+  client.end();
+});
+
+it('keeps the connection once registration completes', () => {
+  vi.useFakeTimers();
+  const socket = new MockSocket();
+  connect.mockReturnValue(socket);
+  const client = new IrcClient('server', 'bot', {
+    millisecondsBeforeRegistrationTimeout: 1000,
+    millisecondsOfSilenceBeforePingSent: 60_000,
+  });
+  client.connect();
+  connect.mock.calls[0][1]();
+  socket.emit('data', ':server 001 bot :Welcome bot!u@h\r\n');
+
+  vi.advanceTimersByTime(5000);
+  expect(socket.destroy).not.toHaveBeenCalled();
+  expect(connect).toHaveBeenCalledOnce();
+  client.end();
+});
+
+it('does not time out registration after the client ends the connection', () => {
+  vi.useFakeTimers();
+  const socket = new MockSocket();
+  connect.mockReturnValue(socket);
+  const client = new IrcClient('server', 'bot', {
+    retryDelay: 10,
+    millisecondsBeforeRegistrationTimeout: 1000,
+  });
+  client.connect();
+  client.end();
+
+  vi.advanceTimersByTime(5000);
+  expect(socket.destroy).toHaveBeenCalledOnce();
+  expect(connect).toHaveBeenCalledOnce();
+});

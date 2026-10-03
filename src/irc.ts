@@ -65,6 +65,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     lineReader: LineReader;
     socket?: ReturnType<typeof NetConnect> | ReturnType<typeof TlsConnect>;
     requestedDisconnect?: boolean;
+    registrationTimeout?: ReturnType<typeof setTimeout>;
   };
 
   nick = '';
@@ -142,6 +143,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     if (this.connection) {
       this.connection.requestedDisconnect = true;
       this.connection.cyclingPingTimer.stop();
+      this.clearRegistrationTimeout(this.connection);
       this.connection.socket?.destroy();
     }
     this.resetConnectionState();
@@ -186,6 +188,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     });
     connection.socket.addListener('close', () => {
       this.debug('Connection got "close" event');
+      this.clearRegistrationTimeout(connection);
       // don't reconnect if this is an old connection closing
       if (connection !== this.connection) {
         this.debug('Non-latest connection is being discarded');
@@ -239,6 +242,21 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.emit('netError', exception);
       this.debug(`Network error: ${exception}`);
     });
+
+    // Ping keepalives only start after registration, so guard the window
+    // between opening the socket and RPL_WELCOME separately.
+    const registrationTimeoutMs = this.opt.millisecondsBeforeRegistrationTimeout;
+    if (registrationTimeoutMs !== null) {
+      connection.registrationTimeout = setTimeout(() => {
+        connection.registrationTimeout = undefined;
+        if (connection !== this.connection || connection.requestedDisconnect) {
+          return;
+        }
+
+        this.debug(`Registration timed out after ${registrationTimeoutMs}ms`);
+        this.disconnectForReconnect();
+      }, registrationTimeoutMs);
+    }
     this.connection = connection;
   }
 
@@ -379,6 +397,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.clearRetryTimeout();
       this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
       this.connection.cyclingPingTimer.stop();
+      this.clearRegistrationTimeout(this.connection);
       this.cancelAutoRenick();
       this.connection.socket.destroy();
     }
@@ -392,6 +411,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     this.clearRetryTimeout();
     this.whoisTracker.rejectAll(new Error('Disconnected before WHOIS completed'));
     this.connection.cyclingPingTimer.stop();
+    this.clearRegistrationTimeout(this.connection);
     this.cancelAutoRenick();
     this.connection.socket.destroy();
   }
@@ -411,6 +431,13 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
       this.removeListener('join', listener);
     }
     this.pendingJoins.clear();
+  }
+
+  private clearRegistrationTimeout(connection: IrcClient['connection']) {
+    if (connection.registrationTimeout) {
+      clearTimeout(connection.registrationTimeout);
+      connection.registrationTimeout = undefined;
+    }
   }
 
   private clearRetryTimeout() {
@@ -498,6 +525,7 @@ export class IrcClient extends TypedEmitter<IrcClientEvents> {
     // Clients must answer server PINGs during registration, but only start
     // client-initiated keepalives after registration completes.
     // https://modern.ircdocs.horse/#connection-registration
+    this.clearRegistrationTimeout(this.connection);
     this.connection.cyclingPingTimer.start();
     this.emit('registered', message);
     const res = await this.whois(registeredNick);

@@ -58,6 +58,11 @@ export interface IrcOptions {
   millisecondsOfSilenceBeforePingSent: number;
   /** Time in milliseconds to wait for server activity after a keepalive `PING` before timing out. */
   millisecondsBeforePingTimeout: number;
+  /**
+   * Time in milliseconds to wait for the server to complete registration (`RPL_WELCOME`)
+   * after opening the socket before reconnecting. `null` disables the timeout.
+   */
+  millisecondsBeforeRegistrationTimeout: number | null;
   /** Parse IRC prefixes more strictly according to RFC-style nick rules. */
   enableStrictParse: boolean;
 }
@@ -91,6 +96,7 @@ const defaultOptions: IrcOptions = {
   encoding: null,
   millisecondsOfSilenceBeforePingSent: 15 * 1000,
   millisecondsBeforePingTimeout: 8 * 1000,
+  millisecondsBeforeRegistrationTimeout: 60 * 1000,
   enableStrictParse: false,
 };
 
